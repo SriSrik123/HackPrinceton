@@ -19,9 +19,11 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { VRButton } from "three/addons/webxr/VRButton.js";
 import { StereoEffect } from "three/addons/effects/StereoEffect.js";
+import { VideoClip } from "./videoClip.js";
+import { SeatTransition } from "./seatTransition.js";
 import { LookControls } from "./lookControls.js";
 import { addProjection } from "./projection.js";
-import { MasterClock, clipTime, planClip } from "./masterClock.js";
+import { MasterClock, clipTime } from "./masterClock.js";
 import { parseSeats, dummySeats, verticalFov, seatSpacing } from "./seats.js";
 
 const params = new URLSearchParams(location.search);
@@ -30,7 +32,7 @@ const num = (key, fallback) => (params.has(key) && Number.isFinite(Number(params
 const opt = {
   seat: num("seat", 1) - 1,
   t: num("t", 0),
-  dwell: num("dwell", 1.5),
+  dwell: num("dwell", 0), // opt in; Cardboard defaults to explicit screen taps
   reveal: num("reveal", 1), // 0 = show the venue right away; otherwise the video shows alone until the first tap after Start
   video: params.get("video"),
   autoplay: params.get("autoplay") === "1",
@@ -74,35 +76,6 @@ let stereo = null;
 // ---------------------------------------------------------------------------
 // Clips: what a seat plays. A real video, or a fake clip that draws its own clip time.
 // ---------------------------------------------------------------------------
-class VideoClip {
-  constructor(url) {
-    const v = document.createElement("video");
-    v.src = url;
-    v.crossOrigin = "anonymous";
-    v.playsInline = true;
-    v.preload = "auto";
-    v.muted = true;
-    this.video = v;
-    this.source = v;
-  }
-  get duration() { return this.video.duration; }
-  prime() { this.video.play().catch(() => {}); } // inside a tap, so iOS lets this element play later
-  // Returns "before" | "playing" | "after". Only the active seat's clip ever plays (and has sound).
-  sync(t, playing, active) {
-    const v = this.video;
-    v.muted = !active;
-    const plan = planClip({ clipTime: t, duration: v.duration, videoTime: v.currentTime });
-    if (!active || plan.state !== "playing") {
-      if (!v.paused) v.pause();
-      return plan.state;
-    }
-    if (plan.seekTo !== null) v.currentTime = plan.seekTo;
-    if (playing && v.paused) v.play().catch(() => {});
-    else if (!playing && !v.paused) v.pause();
-    return "playing";
-  }
-}
-
 // Stand-in for a clip while there is no footage: shows the seat name and its own clip time, so the
 // master clock and offsets can be seen working.
 class FakeClip {
@@ -115,7 +88,6 @@ class FakeClip {
     this.source = new THREE.CanvasTexture(this.canvas);
     this.lastTenth = NaN;
   }
-  prime() {}
   sync(t) {
     if (t < 0) return "before";
     const tenth = Math.floor(t * 10);
@@ -153,7 +125,8 @@ async function loadSeats() {
   try {
     const res = await fetch(DATA_DIR + "cameras.json", { headers: { Accept: "application/json" } });
     if (!res.ok || isHtml(res)) return { seats: dummySeats(opt.video), dummy: true };
-    return { seats: parseSeats(await res.json(), { flip: opt.venueFlip }), dummy: false };
+    const data = await res.json();
+    return { seats: parseSeats(data, { flip: opt.venueFlip, requireOffsets: !data.testOnly }), dummy: false, production: !data.testOnly };
   } catch (e) {
     if (e instanceof SyntaxError || /Seat|cameras\.json/.test(e.message)) throw e; // a broken file should be loud
     return { seats: dummySeats(opt.video), dummy: true };
@@ -293,7 +266,7 @@ function buildSeat(data, index) {
   return { data, clip, projection, marker, fill, hit, shown: false };
 }
 
-function selectSeat(i) {
+function placeSeat(i, master = clock.time()) {
   if (i === current && rig.userData.placed) return;
   current = i;
   const s = seats[i].data;
@@ -301,14 +274,31 @@ function selectSeat(i) {
   rig.position.set(...s.pos);
   look.baseYaw = THREE.MathUtils.degToRad(s.yaw); // face the stage the way the filming phone did
   look.yaw = 0;
+  look.roll = rad(s.roll);
   look.pitch = THREE.MathUtils.clamp(rad(s.pitch), -1.5, 1.5); // desktop: start tilted like the phone was
   look.recenter();
   rig.rotation.y = look.baseYaw;
   gaze.target = null;
   gaze.t = 0;
   gaze.cooldown = COOLDOWN;
+  // Pause/mute the old clip before starting the target, including when switching backwards.
+  seats.forEach((seat, k) => { if (k !== i) seat.clip.sync(0, false, false); });
+  seats[i].clip.sync(clipTime(master, s.offsetSeconds), clock.playing, true, true);
   seats.forEach((seat, k) => { seat.marker.visible = k !== i; });
   document.querySelectorAll("#seats button").forEach((b, k) => b.classList.toggle("current", k === i));
+}
+
+const transition = new SeatTransition({
+  time: () => clock.time(),
+  teleport: placeSeat,
+  setFov: fov => { camera.fov = fov; camera.updateProjectionMatrix(); },
+  hide: () => seats.forEach(s => { s.shown = false; s.projection.update({ enabled: false }); }),
+});
+function selectSeat(i) {
+  if (!Number.isInteger(i) || !seats[i] || transition.active) return false;
+  if (!rig.userData.placed) { placeSeat(i); return true; }
+  if (i === current) return false;
+  return transition.start(i, camera.fov);
 }
 
 // ---------------------------------------------------------------------------
@@ -318,6 +308,7 @@ const gaze = { target: null, t: 0, cooldown: 0, ray: new THREE.Raycaster(), cent
 const camPos = new THREE.Vector3();
 
 function updateGaze(dt) {
+  if (transition.active) return;
   gaze.cooldown = Math.max(0, gaze.cooldown - dt);
   gaze.ray.setFromCamera(gaze.center, camera);
   const candidates = seats.filter((s, k) => k !== current).map((s) => s.hit);
@@ -326,11 +317,11 @@ function updateGaze(dt) {
   if (target !== gaze.target) { gaze.target = target; gaze.t = 0; }
   if (target !== null && gaze.cooldown === 0) {
     gaze.t += dt;
-    if (gaze.t >= opt.dwell) { selectSeat(target); return; }
+    if (opt.dwell > 0 && gaze.t >= opt.dwell) { selectSeat(target); return; }
   }
   camera.getWorldPosition(camPos);
   seats.forEach((s, k) => {
-    s.fill.scale.setScalar(k === gaze.target && gaze.cooldown === 0 ? Math.max(0.001, gaze.t / opt.dwell) : 0.001);
+    s.fill.scale.setScalar(k === gaze.target && gaze.cooldown === 0 && opt.dwell > 0 ? Math.max(0.001, gaze.t / opt.dwell) : 0.001);
     s.fill.lookAt(camPos); // the disc always faces the viewer
   });
 }
@@ -339,8 +330,8 @@ function updateGaze(dt) {
 // UI: desktop drag, Android WebXR, Cardboard fallback (StereoEffect + gyro)
 // ---------------------------------------------------------------------------
 function startPlayback() {
-  seats.forEach((s) => s.clip.prime());
   clock.play();
+  seats[current]?.clip.sync(clipTime(clock.time(), seats[current].data.offsetSeconds), true, true, true);
 }
 
 async function startCardboard() {
@@ -363,22 +354,26 @@ function exitCardboard() {
   document.exitFullscreen?.().catch(() => {});
 }
 
+function handleTap() {
+  if (transition.active) return;
+  beginReveal();
+  if (gaze.target !== null) {
+    if (gaze.cooldown === 0) selectSeat(gaze.target);
+  } else if (stereo) look.recenter();
+}
+
 function setupUi() {
   document.getElementById("btn-start").onclick = () => { startPlayback(); document.getElementById("btn-start").remove(); };
   document.getElementById("btn-cardboard").onclick = startCardboard;
   document.getElementById("btn-exit").onclick = exitCardboard;
   // A tap (the Cardboard button) selects the marker you are looking at; otherwise it recenters.
-  renderer.domElement.addEventListener("click", () => {
-    beginReveal(); // first tap after Start fades the venue in (the Cardboard button also clicks the canvas)
-    if (gaze.target !== null && gaze.cooldown === 0) selectSeat(gaze.target);
-    else if (stereo) look.recenter();
-  });
+  renderer.domElement.addEventListener("click", handleTap);
   const vrButton = VRButton.createButton(renderer);
   vrButton.id = "VRButton";
   document.body.appendChild(vrButton);
   renderer.xr.addEventListener("sessionstart", () => {
     startPlayback(); exitCardboard();
-    renderer.xr.getSession().addEventListener("select", beginReveal); // WebXR taps do not click the canvas
+    renderer.xr.getSession().addEventListener("select", handleTap); // WebXR taps do not click the canvas
   });
 }
 
@@ -397,6 +392,7 @@ renderer.setAnimationLoop(() => {
   const now = performance.now();
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
+  transition.update(dt);
   if (!renderer.xr.isPresenting) look.update();
   if (!seats.length) { renderer.render(scene, camera); return; }
 
@@ -408,7 +404,7 @@ renderer.setAnimationLoop(() => {
   seats.forEach((s, k) => {
     const active = k === current;
     const state = s.clip.sync(clipTime(master, s.data.offsetSeconds), clock.playing, active);
-    const show = active && state === "playing"; // one projection at a time, so moving people never appear twice
+    const show = active && state === "playing" && !s.clip.video?.seeking; // one projection at a time, so moving people never appear twice
     if (show !== s.shown) { s.shown = show; s.projection.update({ enabled: show }); }
     s.projection.update(dt);
   });
@@ -420,6 +416,7 @@ renderer.setAnimationLoop(() => {
   statusEl.textContent = `${cur.data.name} (seat ${current + 1} of ${seats.length})\n`
     + (clock.playing ? "" : "Paused. Tap Start.\n")
     + `master ${master.toFixed(1)} s · clip ${ct.toFixed(1)} s${ct < 0 ? " (not started yet)" : ""}`
+    + (cur.clip.error ? `\n${cur.clip.error}` : "")
     + (cur.data.offsetKnown ? "" : " · audio offset unknown")
     + (opt.debug ? `\ngaze ${gaze.target === null ? "-" : seats[gaze.target].data.name} ${gaze.t.toFixed(2)} s` : "");
 
@@ -442,6 +439,10 @@ async function main() {
   setStatus(loaded.dummy ? `No ${DATA_DIR.slice(2)}cameras.json yet: showing the dummy scene.` : "Loading the venue...");
   stageSurfaces = await loadStage(loaded.dummy);
   venue = await loadVenue();
+  if (loaded.production && (!stageSurfaces || !venue)) {
+    setStatus("Production assets missing or invalid: stage.glb and venue.spz are required in public/concert/.");
+    return;
+  }
   if (venue && opt.reveal > 0) venue.opacity = 0;
 
   // Markers are sized for seats a few meters apart; shrink them for close seats or normalized units.

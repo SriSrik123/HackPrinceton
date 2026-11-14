@@ -28,7 +28,7 @@ const RX180 = new THREE.Quaternion(1, 0, 0, 0); // 180 degrees around X: OpenCV 
 const deg = THREE.MathUtils.radToDeg;
 const finite = (list) => list.every((n) => Number.isFinite(n));
 
-export function parseSeats(json, { flip = false } = {}) {
+export function parseSeats(json, { flip = false, requireOffsets = false } = {}) {
   const list = Array.isArray(json) ? json : json?.seats ?? json?.clips;
   if (!Array.isArray(list) || list.length === 0) {
     throw new Error("cameras.json has no seats (expected a \"seats\" or \"clips\" array).");
@@ -37,6 +37,16 @@ export function parseSeats(json, { flip = false } = {}) {
   const opencv = json?.axes === "opencv";
   const defaultFovAxis = json?.fovAxis === "horizontal" ? "horizontal" : "vertical";
 
+  if (requireOffsets) {
+    const names = list.map(c => c.name);
+    if (new Set(names).size !== names.length) throw new Error('cameras.json has duplicate seat names');
+    if (!list.some(c => c.name === 'seatA' && c.offsetSeconds === 0)) throw new Error('cameras.json requires master seatA with offset 0');
+    for (const c of list) {
+      if (!Number.isFinite(c.offsetSeconds)) throw new Error(`Seat ${c.name} needs a known offsetSeconds`);
+      if (!/^[a-zA-Z0-9_-]+$/.test(c.name) || c.videoUrl !== `/concert/${c.name}.mp4`)
+        throw new Error(`Seat ${c.name} needs matching /concert/name.mp4 videoUrl`);
+    }
+  }
   return list.map((c, i) => {
     const pos = (c.position ?? c.pos)?.map?.(Number);
     const raw = (c.quaternion ?? c.quat)?.map?.(Number);
@@ -52,11 +62,14 @@ export function parseSeats(json, { flip = false } = {}) {
     const w = Number(c.width), h = Number(c.height);
     const offset = c.offsetSeconds ?? c.offset ?? null;
 
+    if (offset !== null && !Number.isFinite(Number(offset))) throw new Error(`Seat ${i} has an invalid offset`);
+    const fov = Number(c.fov ?? c.fovDegrees ?? 50);
+    if (!Number.isFinite(fov) || fov <= 0 || fov >= 180) throw new Error(`Seat ${i} has an invalid FOV`);
     return {
       name: c.name ?? `Seat ${i + 1}`,
       pos,
       yaw: deg(e.y), pitch: deg(e.x), roll: deg(e.z),
-      fov: Number(c.fov ?? c.fovDegrees ?? 50),
+      fov,
       fovAxis: c.fovAxis ?? defaultFovAxis,
       aspect: w > 0 && h > 0 ? w / h : null, // frame shape, when the file gives it (portrait clips are < 1)
       videoUrl: c.videoUrl ?? c.video ?? null,

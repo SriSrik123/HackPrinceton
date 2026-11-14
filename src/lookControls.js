@@ -25,6 +25,7 @@ export class LookControls {
     // drag-to-look state
     this.yaw = 0;
     this.pitch = 0;
+    this.roll = 0;
     this._onOrient = (e) => { if (e.alpha != null) this.orientation = e; };
 
     let dragging = false, lastX = 0, lastY = 0;
@@ -72,7 +73,7 @@ export class LookControls {
       }
       this.rig.rotation.y = this.baseYaw + this.headingOffset;
     } else if (!this.gyro) {
-      this.camera.rotation.set(this.pitch, this.yaw, 0, "YXZ");
+      this.camera.rotation.set(this.pitch, this.yaw, this.roll, "YXZ");
       this.rig.rotation.y = this.baseYaw;
     }
   }
