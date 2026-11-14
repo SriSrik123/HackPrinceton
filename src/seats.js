@@ -101,7 +101,8 @@ export function verticalFov(horizontalDeg, aspect) {
 // is visible. videoUrl is set only when you give one (?video=...); otherwise the page draws a fake clip.
 export function dummySeats(videoUrl = null) {
   const target = new THREE.Vector3(0, 2, -8);
-  const spots = [["Left", [-3, 1.6, -1], 0], ["Center", [0, 1.6, 0], 1.5], ["Right", [3, 1.6, -1], 3]];
+  // Made-up stand-ins for three spots in an Athens stadium (meters, stage at z = -8). Not surveyed.
+  const spots = [["Pitch Left", [-4, 1.7, -3], 0], ["Upper Tier Center", [0, 5, 6], 1.5], ["Side Stand Right", [6, 3, 0], 3]];
   return spots.map(([name, pos, offsetSeconds]) => {
     const cam = new THREE.PerspectiveCamera(); // a camera looks down -Z, like the real clips
     cam.position.set(...pos);

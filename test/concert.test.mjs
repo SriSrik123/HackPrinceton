@@ -112,7 +112,7 @@ test("parseSeats flip turns positions and view directions 180 degrees around X",
 });
 
 test("seatSpacing: closest pair, Infinity for one seat", () => {
-  near(seatSpacing(dummySeats()), Math.hypot(3, 0, 1));
+  near(seatSpacing(dummySeats()), Math.hypot(6, 2, 6));
   assert.equal(seatSpacing(dummySeats().slice(0, 1)), Infinity);
   assert.ok(seatSpacing(parseSeats(neven)) < 1); // normalized units: markers must shrink
 });
