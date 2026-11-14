@@ -4,3 +4,8 @@ dist
 public/world/*
 !public/world/.gitkeep
 .DS_Store
+public/concert-test/*
+!public/concert-test/.gitkeep
+!public/concert-test/cameras.json
+public/concert/*
+!public/concert/.gitkeep

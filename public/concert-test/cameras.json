@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "testOnly": true,
+  "coordinateSystem": {
+    "space": "nerfstudio-training-export",
+    "handedness": "right",
+    "units": "normalized-scene-units-not-meters",
+    "cameraAxes": "+X right, +Y up, -Z forward",
+    "quaternion": "camera-to-world, [x,y,z,w]",
+    "fov": "vertical degrees, centered-pinhole approximation",
+    "previewFlipApplied": false
+  },
+  "timing": {
+    "convention": "clipTime = masterTime - offsetSeconds",
+    "unknownOffset": null
+  },
+  "limitations": [
+    "No lens distortion, principal-point offset, unequal-focal-length or learned pose correction.",
+    "One pose per video requires a stationary segment; sourceFrame identifies the registered frame.",
+    "Keep this file with the matching SPZ and training metadata; do not apply the training transform twice."
+  ],
+  "seats": [
+    {
+      "name": "Test viewpoint 1",
+      "sourceFrame": "images/frame_00004.jpg",
+      "pos": [
+        -0.15721100662070872,
+        0.6758036863362566,
+        0.0594001024186951
+      ],
+      "quat": [
+        -0.32588900395189396,
+        0.50305271103022,
+        0.7583723115257185,
+        -0.25613622184206397
+      ],
+      "fov": 62.34703084081309,
+      "width": 1280,
+      "height": 2276,
+      "videoUrl": null,
+      "offsetSeconds": null
+    },
+    {
+      "name": "Test viewpoint 2",
+      "sourceFrame": "images/frame_00018.jpg",
+      "pos": [
+        0.5298847912949458,
+        -0.42946939237296233,
+        0.03759936919241402
+      ],
+      "quat": [
+        0.5950033338734189,
+        0.0008589563816464775,
+        0.18801793670949182,
+        0.7814214934009408
+      ],
+      "fov": 62.34703084081309,
+      "width": 1280,
+      "height": 2276,
+      "videoUrl": null,
+      "offsetSeconds": null
+    },
+    {
+      "name": "Test viewpoint 3",
+      "sourceFrame": "images/frame_00025.jpg",
+      "pos": [
+        0.06953359300971863,
+        -0.6066968037548803,
+        -0.051821983888225676
+      ],
+      "quat": [
+        0.6529828424038995,
+        -0.1521383690519529,
+        -0.08990140152941323,
+        0.7364679641310837
+      ],
+      "fov": 62.34703084081309,
+      "width": 1280,
+      "height": 2276,
+      "videoUrl": null,
+      "offsetSeconds": null
+    }
+  ]
+}
