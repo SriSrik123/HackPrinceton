@@ -1,0 +1,151 @@
+<!doctype html>
+<!-- KAN-10 projection test bench: a fake room, several sources, sliders for every param.
+     Dev only. Run "npm run dev" and open https://localhost:5173/test/projection.html -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KAN-10 projection test</title>
+<style>html,body{margin:0;height:100%;background:#111;overflow:hidden}canvas{display:block}</style>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import GUI from "three/addons/libs/lil-gui.module.min.js";
+import { addProjection } from "../src/projection.js";
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+document.body.append(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x15151a);
+const view = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.05, 100);
+view.position.set(4, 3, 6);
+const orbit = new OrbitControls(view, renderer.domElement);
+orbit.target.set(0, 1.2, -1);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x444455, 1.2));
+
+// Fake room: floor + 3 walls (camera side open) + furniture, roughly 4 x 2.6 x 5 m.
+const room = [];
+const gridCanvas = Object.assign(document.createElement("canvas"), { width: 256, height: 256 });
+{
+  const g = gridCanvas.getContext("2d");
+  g.fillStyle = "#8a8f98"; g.fillRect(0, 0, 256, 256);
+  g.strokeStyle = "#555"; g.lineWidth = 3; g.strokeRect(0, 0, 256, 256);
+}
+const grid = new THREE.CanvasTexture(gridCanvas);
+grid.wrapS = grid.wrapT = THREE.RepeatWrapping;
+grid.repeat.set(4, 4);
+grid.colorSpace = THREE.SRGBColorSpace;
+const wall = (w, h, x, y, z, rotY = 0, rotX = 0) => {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: grid, side: THREE.DoubleSide }));
+  m.position.set(x, y, z);
+  m.rotation.set(rotX, rotY, 0);
+  scene.add(m); room.push(m);
+};
+wall(4, 5, 0, 0, 0, 0, -Math.PI / 2);   // floor
+wall(4, 2.6, 0, 1.3, -2.5);             // back wall
+wall(5, 2.6, -2, 1.3, 0, Math.PI / 2);  // left wall
+wall(5, 2.6, 2, 1.3, 0, -Math.PI / 2);  // right wall
+const box = (w, h, d, x, y, z, color) => {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color }));
+  m.position.set(x, y, z);
+  scene.add(m); room.push(m);
+};
+box(1.6, 0.5, 0.8, 0, 0.25, -2.0, 0x6b4f3a); // couch against the back wall
+box(0.6, 0.6, 0.6, 1.4, 0.3, -0.5, 0x3a5f6b); // ottoman
+
+// ---- sources: add entries here (or with the GUI button). type: "pattern" | "video" | "photo"; url for video/photo.
+// pose = addProjection params (pos, yaw, pitch, roll, fov, fade, ...). Later entries draw over earlier ones.
+// Files next to this page or in public/ work as urls, e.g. "/world/source.mp4".
+const sources = [
+  { name: "test pattern", type: "pattern", pose: { pos: [0, 1.4, 2.4] } },
+  // { name: "party.mp4", type: "video", url: "/world/source.mp4", pose: { pos: [0, 1.4, 2.4], fov: 50 } },
+  // { name: "photo1", type: "photo", url: "photo1.jpg", pose: { pos: [-1, 1.5, 2], yaw: 20 } },
+];
+
+const gui = new GUI();
+const ui = { through: null }; // the source whose projector we are looking through, or null for orbit
+const live = [];              // { s, proj, folder, video }
+let order = 1;
+
+function addSource(s) {
+  let src = null, video = null; // null = the built-in test pattern
+  if (s.type === "video") {
+    video = Object.assign(document.createElement("video"), { src: s.url, loop: true, muted: true, playsInline: true, crossOrigin: "anonymous" });
+    video.play().catch(() => {}); // muted, so autoplay is allowed. The page plays it, never projection.js
+    src = video;
+  } else if (s.type === "photo") {
+    src = new THREE.TextureLoader().load(s.url);
+  }
+  // debug: true shows the frustum helper. Explicit pose values win over URL overrides.
+  const proj = addProjection(scene, src, room, { ...s.pose, order: order++, debug: true });
+  s.pose = proj.params; // GUI edits write straight into the sources list
+  const up = () => proj.update();
+  const f = gui.addFolder(s.name); f.close();
+  ["x", "y", "z"].forEach((k, i) => f.add(s.pose.pos, i, -6, 6, 0.01).name("pos " + k).onChange(up));
+  f.add(s.pose, "yaw", -180, 180, 0.1).onChange(up);
+  f.add(s.pose, "pitch", -90, 90, 0.1).onChange(up);
+  f.add(s.pose, "roll", -45, 45, 0.1).onChange(up);
+  f.add(s.pose, "fov", 20, 120, 0.1).name("fov (vertical)").onChange(up);
+  f.add(s.pose, "fade", 0, 0.5, 0.005).onChange(up);
+  f.add(s.pose, "opacity", 0, 1, 0.01).onChange(up);
+  f.add(s.pose, "brightness", 0, 2.5, 0.01).onChange(up);
+  f.add(s.pose, "saturation", 0, 2, 0.01).onChange(up);
+  f.addColor(s.pose, "tint").onChange(up);
+  f.add(s.pose, "shading", 0, 1, 0.01).onChange(up);
+  f.add(s.pose, "ambient", 0, 1, 0.01).onChange(up);
+  f.add(s.pose, "enabled").onChange(up);
+  const l = { s, proj, folder: f, video };
+  f.add({ go() { ui.through = l; } }, "go").name("look through this");
+  f.add({ rm() {
+    proj.dispose(); video?.pause(); f.destroy();
+    live.splice(live.indexOf(l), 1); sources.splice(sources.indexOf(s), 1);
+    if (ui.through === l) ui.through = null;
+  } }, "rm").name("remove");
+  live.push(l);
+}
+sources.forEach(addSource);
+
+const fileIn = Object.assign(document.createElement("input"), { type: "file", accept: "video/*,image/*" });
+fileIn.onchange = () => {
+  const file = fileIn.files[0];
+  if (!file) return;
+  const last = sources[sources.length - 1]?.pose; // start from the previous source's pose
+  const s = { name: file.name, type: file.type.startsWith("video") ? "video" : "photo", url: URL.createObjectURL(file), pose: { ...(last || {}) } };
+  sources.push(s); addSource(s); fileIn.value = "";
+};
+gui.add({ add() { fileIn.click(); } }, "add").name("+ add video / photo…");
+gui.add({ orbit() { ui.through = null; } }, "orbit").name("orbit view");
+const vis = { helpers: true };
+gui.add(vis, "helpers").name("show frustums");
+gui.add({ copy() {
+  // blob: urls die on reload, so they are left out
+  const out = sources.map(({ name, type, url, pose }) => ({ name, type, url: url?.startsWith("blob:") ? undefined : url, pose }));
+  const text = JSON.stringify(out, null, 2);
+  navigator.clipboard?.writeText(text);
+  console.log(text);
+} }, "copy").name("copy sources JSON");
+
+const pview = new THREE.PerspectiveCamera();
+renderer.setAnimationLoop(() => {
+  live.forEach((l) => {
+    l.proj.update(0); // the per-frame call main.js makes with dt (the value is not used)
+    l.proj.helper.visible = vis.helpers && ui.through !== l;
+  });
+  if (ui.through) {
+    pview.copy(ui.through.proj.cam);
+    pview.aspect = innerWidth / innerHeight;
+    pview.updateProjectionMatrix();
+    renderer.render(scene, pview);
+  } else {
+    orbit.update();
+    renderer.render(scene, view);
+  }
+});
+addEventListener("resize", () => {
+  renderer.setSize(innerWidth, innerHeight);
+  view.aspect = innerWidth / innerHeight;
+  view.updateProjectionMatrix();
+});
+
+// console handles for debugging
+Object.assign(window, { THREE, scene, room, live, sources, gui, ui, addSource });
+</script>
