@@ -8,11 +8,11 @@ Last updated: Nov 13, 2026
 - **Viewer scaffold** (supports KAN-9, KAN-11): three.js + Spark viewer, rig at camera spot, VRButton on Android, StereoEffect + gyro fallback for iPhone, URL overrides (`?splat`, `?flip`, `?cam`, `?yaw`, `?debug`). `vite build` passes.
 - **Marble script** (supports KAN-8): `scripts/marble.mjs` uploads video, polls, downloads into `public/world/`. Ran end to end against a local fake API.
 - **Projection stub** (supports KAN-10): `src/projection.js` `addProjection(scene, video, surfaces, opts)` for Mac 2 to fill in.
-- **Real Marble world generated** (KAN-8, partly): `public/world/splat-500k.spz` (24 MB) downloaded.
+- **Test splat on phone:** a placeholder `.spz` (not from the pool video) loads and renders in Chrome on the Android phone over USB (`adb reverse`), so Spark rendering works there.
 
 ## In progress
 
-- **KAN-8: Marble room.** 500k splat is downloaded. Not yet confirmed: 100k splat and `collider.glb` present, and that the room loads right side up. `world.json` currently only contains the video name.
+- Nothing. KAN-8 has not started: the Marble run on the pool video has not been done. `public/world/splat-500k.spz` is a random test file, not the real room.
 
 ## Not verified yet
 
