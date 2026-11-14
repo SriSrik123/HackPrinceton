@@ -3,3 +3,5 @@ dist
 .env
 public/world/*
 !public/world/.gitkeep
+public/concert-test/*
+!public/concert-test/.gitkeep
