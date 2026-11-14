@@ -36,7 +36,8 @@ From the repository root, run `npm run export-cameras`. This writes
 `public/concert-test/cameras.json` with three table viewpoints (frames 4, 18 and
 25). It reuses the same pose conversion as the viewer and marks the output
 `testOnly: true`. It does not turn walk-around frames into actual concert seats.
-Share this ignored JSON alongside the matching SPZ on Drive.
+The table-test cameras.json is tracked in Git as a small handoff example.
+Keep it paired with the matching SPZ on Drive. Other scene assets remain ignored.
 
 The JSON envelope contains `schemaVersion`, `coordinateSystem`, `timing`,
 `limitations` and `seats`. Each seat has `name`, `sourceFrame`, `pos`, `quat`
