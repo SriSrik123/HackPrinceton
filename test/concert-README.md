@@ -3,7 +3,9 @@
 Run `npm ci` and `npm run dev` from the repository root, then open
 `https://localhost:5173/test/concert.html` (use the port printed by Vite).
 
-Supply these local files in `public/concert-test/`:
+Download the test assets from the [shared Google Drive folder](https://drive.google.com/drive/folders/1v_ADV5Vd7gC-bofLqHq1Ze1uOv-9k_7y).
+Request access from the folder owner if needed. Put the files directly in
+`public/concert-test/` (avoid an extra nested `concert-test` folder):
 
 - `venue-test.spz`: nerfstudio Gaussian-splat PLY converted to SPZ.
 - `transforms.json`: from the processed dataset.
