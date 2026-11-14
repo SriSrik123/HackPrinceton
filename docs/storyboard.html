@@ -127,6 +127,16 @@ td.num, th.num { font-family: var(--mono); font-variant-numeric: tabular-nums; w
   dt { padding-top: 8px; }
   .seg small { display: none; }
 }
+
+@page { size: Letter; margin: 0.45in; }
+@media print {
+  html { zoom: 0.82; }
+  body { padding-block: 0; }
+  .wrap { gap: 26px; }
+  .shot, .card, .rule, .script, .beats li, tr, .runbar, .legend, .tablewrap { break-inside: avoid; }
+  h2 { break-after: avoid; }
+  .shots { gap: 14px; }
+}
 </style>
 
 </head>
