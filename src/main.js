@@ -138,6 +138,9 @@ async function playVideo() {
 }
 
 async function startCardboard() {
+  // Start the video (and its sound) inside the tap, before the iPhone motion-permission prompt:
+  // iOS Safari can drop the user gesture across that await and then block play() with sound.
+  playVideo();
   try {
     await look.enableGyro();
   } catch (e) {
@@ -150,7 +153,6 @@ async function startCardboard() {
   document.body.classList.add("cardboard");
   document.documentElement.requestFullscreen?.().catch(() => {}); // not supported on iPhone, fine
   screen.orientation?.lock?.("landscape").catch(() => {});
-  playVideo();
   setStatus("");
 }
 
