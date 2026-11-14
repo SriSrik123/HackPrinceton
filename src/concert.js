@@ -203,6 +203,7 @@ async function loadVenue() {
 // ---------------------------------------------------------------------------
 let seats = [];
 let current = 0;
+let leaving = -1; // previous seat, still playing its audio during a switch
 let stageSurfaces = null;
 
 function makeLabel(text) {
@@ -268,6 +269,8 @@ function buildSeat(data, index) {
 
 function placeSeat(i, master = clock.time()) {
   if (i === current && rig.userData.placed) return;
+  // The old seat's clip keeps the sound going until the new one is actually playing.
+  leaving = rig.userData.placed ? current : -1;
   current = i;
   const s = seats[i].data;
   rig.userData.placed = true;
@@ -281,8 +284,8 @@ function placeSeat(i, master = clock.time()) {
   gaze.target = null;
   gaze.t = 0;
   gaze.cooldown = COOLDOWN;
-  // Pause/mute the old clip before starting the target, including when switching backwards.
-  seats.forEach((seat, k) => { if (k !== i) seat.clip.sync(0, false, false); });
+  // Pause/mute every other clip (except the one handing over the sound) before starting the target.
+  seats.forEach((seat, k) => { if (k !== i && k !== leaving) seat.clip.sync(0, false, false); });
   seats[i].clip.sync(clipTime(master, s.offsetSeconds), clock.playing, true, true);
   seats.forEach((seat, k) => { seat.marker.visible = k !== i; });
   document.querySelectorAll("#seats button").forEach((b, k) => b.classList.toggle("current", k === i));
@@ -401,13 +404,20 @@ renderer.setAnimationLoop(() => {
   if (venue) venue.opacity = revealK;
 
   const master = clock.time();
+  let curState = null;
   seats.forEach((s, k) => {
     const active = k === current;
-    const state = s.clip.sync(clipTime(master, s.data.offsetSeconds), clock.playing, active);
+    const state = s.clip.sync(clipTime(master, s.data.offsetSeconds), clock.playing, active, false, k === leaving);
+    if (active) curState = state;
     const show = active && state === "playing" && !s.clip.video?.seeking; // one projection at a time, so moving people never appear twice
     if (show !== s.shown) { s.shown = show; s.projection.update({ enabled: show }); }
     s.projection.update(dt);
   });
+  // Hand the sound over once the new clip is really playing (or will never play). If it has not
+  // started yet ("before"), the old clip keeps the music going.
+  const cv = seats[current].clip.video;
+  if (leaving >= 0 && (curState === "after" || curState === "error"
+    || (curState === "playing" && (!cv || (!cv.seeking && cv.readyState >= 3))))) leaving = -1;
   seats.forEach((s, k) => { s.marker.visible = k !== current && revealK > 0; });
   if (revealK > 0) updateGaze(dt); // no jumping while only the video is showing
 

@@ -16,12 +16,14 @@ export class VideoClip {
   }
   get duration() { return this.video.duration; }
   // Returns "before" | "playing" | "after". Only the active seat's clip ever plays (and has sound).
-  sync(t, playing, active, forceSeek = false) {
+  // hold: keep playing with sound (not shown) while the next seat's clip gets ready.
+  sync(t, playing, active, forceSeek = false, hold = false) {
     const v = this.video;
+    const on = active || hold;
     this.needsSeek ||= forceSeek;
-    v.muted = !active || !playing;
+    v.muted = !on || !playing;
     const plan = planClip({ clipTime: t, duration: v.duration, videoTime: v.currentTime });
-    if (!active || plan.state !== "playing" || v.readyState === 0 || this.error) {
+    if (!on || plan.state !== "playing" || v.readyState === 0 || this.error) {
       v.muted = true;
       if (!v.paused) v.pause();
       return this.error ? "error" : v.readyState === 0 ? "loading" : plan.state;

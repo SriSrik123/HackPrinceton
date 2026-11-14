@@ -206,6 +206,16 @@ test('video selection seeks exactly, silences inactive clips, handles duration a
   assert.equal(clip.sync(1, true, true), 'error'); assert.equal(video.muted, true);
 });
 
+test('a held (leaving) clip keeps playing with sound, then stops when released', () => {
+  const video = { currentTime: 5, duration: 30, readyState: 4, paused: false, muted: false,
+    addEventListener() {}, pause() { this.paused = true; }, play() { this.paused = false; return Promise.resolve(); } };
+  const clip = new VideoClip('seatA.mp4', () => video);
+  assert.equal(clip.sync(5.05, true, false, false, true), 'playing');
+  assert.equal(video.muted, false); assert.equal(video.paused, false);
+  clip.sync(5.1, false, false, false, true); assert.equal(video.muted, true); // paused clock stays silent
+  clip.sync(5.1, true, false); assert.equal(video.muted, true); assert.equal(video.paused, true);
+});
+
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

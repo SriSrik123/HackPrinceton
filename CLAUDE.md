@@ -30,16 +30,7 @@ The novel part: moving people in 3D from one old phone video is research only (M
 - **NVIDIA 2 (Person 2): concert clips.** Film clips together with Person 1 (KAN-7), audio sync by cross-correlation (KAN-12), click-to-play viewer in three.js + Spark (KAN-14) with one master clock (each clip's currentTime = master time minus its offset). The team's own filmed footage is the test data and the demo backup.
 - Merge Saturday morning (plan an hour or two to line the projection up). Sunday morning: backup demo video and pitch. Tickets live in Jira project HackPrinceton (key KAN), KAN-4 to KAN-17.
 
-## What's in this repo
-
-```
-scripts/marble.mjs     upload video -> Marble -> poll -> download into public/world/
-src/main.js            three.js + Spark viewer: rig at camera spot, VRButton, Cardboard fallback
-src/projection.js      addProjection(scene, video, surfaces, opts) stub for Mac 2
-src/lookControls.js    gyro look (DeviceOrientation) + desktop drag-to-look
-src/config.js          defaults, all overridable by URL (?splat=100k&flip=0&cam=x,y,z&yaw=90&debug=1)
-README.md              how to run, HTTPS for phones, phone testing
-```
+## Scene graph (party mode, `src/main.js`)
 
 Scene graph: `scene > world (180 deg X flip) > metric (metric_scale_factor, -ground_plane_offset on Y) > splat + surfaces (collider.glb, hidden)`. The camera sits inside `rig`, which is placed at the camera spot. In WebXR, three.js applies the headset pose relative to the camera's parent, so the rig works in VR too.
 
