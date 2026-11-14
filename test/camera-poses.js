@@ -24,6 +24,8 @@ export function recordedViews(meta, parser) {
     if (!(width > 0 && height > 0 && fy > 0)) throw new Error('Missing camera intrinsics');
     return {
       name: frame.file_path,
+      width,
+      height,
       pose,
       aspect: width / height,
       fov: THREE.MathUtils.radToDeg(2 * Math.atan(height / (2 * fy))),

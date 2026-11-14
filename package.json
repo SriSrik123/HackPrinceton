@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "marble": "node --env-file-if-exists=.env scripts/marble.mjs"
+    "marble": "node --env-file-if-exists=.env scripts/marble.mjs",
+    "export-cameras": "node scripts/export-cameras.mjs"
   },
   "dependencies": {
     "@sparkjsdev/spark": "2.4.0",

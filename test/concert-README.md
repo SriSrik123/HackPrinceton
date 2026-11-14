@@ -29,3 +29,36 @@ stage.glb. This page is a developer test, not concert seat navigation or audio s
 
 The browser test has been exercised manually with a rough table reconstruction.
 The normal production build does not include this dev-server test page.
+
+## Export camera handoff
+
+From the repository root, run `npm run export-cameras`. This writes
+`public/concert-test/cameras.json` with three table viewpoints (frames 4, 18 and
+25). It reuses the same pose conversion as the viewer and marks the output
+`testOnly: true`. It does not turn walk-around frames into actual concert seats.
+Share this ignored JSON alongside the matching SPZ on Drive.
+
+The JSON envelope contains `schemaVersion`, `coordinateSystem`, `timing`,
+`limitations` and `seats`. Each seat has `name`, `sourceFrame`, `pos`, `quat`
+(camera-to-world, x/y/z/w), `fov` (vertical degrees), `width`, `height`,
+`videoUrl`, and `offsetSeconds`. Test video URLs and unknown audio offsets are
+null, not invented values. Consumers read `document.seats`; this is a proposed
+handoff contract to confirm with Dave/Sri, not an existing viewer loader.
+
+Select other registered frames with:
+
+```bash
+npm run export-cameras -- --frames images/frame_00004.jpg,images/frame_00025.jpg
+```
+
+For real concert clips, create a local mapping JSON array, one entry per stationary
+clip: `[{"name":"Seat A","frame":"images/seatA_00001.jpg","videoUrl":"/concert/seatA.mp4"}]`.
+Use exact registered frame names. Dave can add `offsetSeconds` when known.
+Place matching transforms.json and dataparser_transforms.json together and run:
+
+```bash
+npm run export-cameras -- --data public/concert --clips clip-mapping.json
+```
+
+This mode sets `testOnly: false`; it does not verify video steadiness, accuracy,
+or playback. Always visually check alignment with the matching venue in Spark.
