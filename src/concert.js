@@ -10,7 +10,7 @@
 //
 // URL options: ?data=concert-test read another folder of public/ · ?seat=N start seat (1-based) ·
 // ?t=SECONDS start master time · ?video=URL use one real video for every seat without one ·
-// ?dwell=1.5 gaze seconds · ?autoplay=1 start the clock on load · ?venueFlip=1 rotate venue, stage and
+// ?reveal=0 skips the video-only intro (default: only the video rectangle shows until the first tap after Start, then the venue fades in) · ?dwell=1.5 gaze seconds · ?autoplay=1 start the clock on load · ?venueFlip=1 rotate venue, stage and
 // seats together 180 degrees around X · ?panelDist=1 stand-in panel distance (scene units) ·
 // ?markerScale= seat marker size (default from the seat spacing) · ?debug=1 wireframes + frustum + readout.
 // Per-projection options from src/projection.js (?projFov=...) also apply to every seat.
@@ -31,6 +31,7 @@ const opt = {
   seat: num("seat", 1) - 1,
   t: num("t", 0),
   dwell: num("dwell", 1.5),
+  reveal: num("reveal", 1), // 0 = show the venue right away; otherwise the video shows alone until the first tap after Start
   video: params.get("video"),
   autoplay: params.get("autoplay") === "1",
   venueFlip: params.get("venueFlip") === "1",
@@ -40,6 +41,10 @@ const opt = {
 };
 const rad = THREE.MathUtils.degToRad;
 let markerScale = 1;
+const REVEAL_FADE = 1.5; // seconds the venue and markers take to fade in
+let venue = null;
+let revealT = opt.reveal > 0 ? null : Infinity; // null until the reveal tap, then seconds since it
+const beginReveal = () => { if (revealT === null && clock.playing) revealT = 0; };
 const COOLDOWN = 1.0; // seconds after a jump before the next gaze selection can fire
 
 const statusEl = document.getElementById("status");
@@ -364,13 +369,17 @@ function setupUi() {
   document.getElementById("btn-exit").onclick = exitCardboard;
   // A tap (the Cardboard button) selects the marker you are looking at; otherwise it recenters.
   renderer.domElement.addEventListener("click", () => {
+    beginReveal(); // first tap after Start fades the venue in (the Cardboard button also clicks the canvas)
     if (gaze.target !== null && gaze.cooldown === 0) selectSeat(gaze.target);
     else if (stereo) look.recenter();
   });
   const vrButton = VRButton.createButton(renderer);
   vrButton.id = "VRButton";
   document.body.appendChild(vrButton);
-  renderer.xr.addEventListener("sessionstart", () => { startPlayback(); exitCardboard(); });
+  renderer.xr.addEventListener("sessionstart", () => {
+    startPlayback(); exitCardboard();
+    renderer.xr.getSession().addEventListener("select", beginReveal); // WebXR taps do not click the canvas
+  });
 }
 
 window.addEventListener("resize", () => {
@@ -391,6 +400,10 @@ renderer.setAnimationLoop(() => {
   if (!renderer.xr.isPresenting) look.update();
   if (!seats.length) { renderer.render(scene, camera); return; }
 
+  if (revealT !== null) revealT += dt;
+  const revealK = revealT === null ? 0 : THREE.MathUtils.clamp(revealT / REVEAL_FADE, 0, 1);
+  if (venue) venue.opacity = revealK;
+
   const master = clock.time();
   seats.forEach((s, k) => {
     const active = k === current;
@@ -399,7 +412,8 @@ renderer.setAnimationLoop(() => {
     if (show !== s.shown) { s.shown = show; s.projection.update({ enabled: show }); }
     s.projection.update(dt);
   });
-  updateGaze(dt);
+  seats.forEach((s, k) => { s.marker.visible = k !== current && revealK > 0; });
+  if (revealK > 0) updateGaze(dt); // no jumping while only the video is showing
 
   const cur = seats[current];
   const ct = clipTime(master, cur.data.offsetSeconds);
@@ -427,7 +441,8 @@ async function main() {
   }
   setStatus(loaded.dummy ? `No ${DATA_DIR.slice(2)}cameras.json yet: showing the dummy scene.` : "Loading the venue...");
   stageSurfaces = await loadStage(loaded.dummy);
-  await loadVenue();
+  venue = await loadVenue();
+  if (venue && opt.reveal > 0) venue.opacity = 0;
 
   // Markers are sized for seats a few meters apart; shrink them for close seats or normalized units.
   markerScale = opt.markerScale ?? Math.min(1, (seatSpacing(loaded.seats) * 0.3) / 0.7);
