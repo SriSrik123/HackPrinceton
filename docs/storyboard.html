@@ -1,0 +1,532 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cardboard Demo Storyboard</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap">
+<style>
+/* Layout: one column of sections; shot panels in a 2-up grid that stacks on phones.
+   Look: the dark inside a headset. Amber marks the party half, blue marks the concert half, grey marks title and brand beats. */
+:root {
+  color-scheme: dark;
+  --bg: #0b0f17;
+  --void: #06080d;
+  --surface: #131925;
+  --surface2: #1b2333;
+  --line: #2d3a52;
+  --line-strong: #5b6d8f;
+  --fg: #e8ecf3;
+  --muted: #9aa6ba;
+  --concert: #5cc8ff;
+  --party: #f0b44c;
+  --good: #4cd08a;
+  --bad: #ff8080;
+  --display: "Space Grotesk", system-ui, sans-serif;
+  --body: "Inter", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg: #f2f4f9; --void: #dde3ee; --surface: #ffffff; --surface2: #e8ecf4;
+    --line: #c4cde0; --line-strong: #6b7a99; --fg: #141a26; --muted: #55627c;
+    --concert: #0a76ad; --party: #9a6000; --good: #14804a; --bad: #b3261e;
+  }
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f2f4f9; --void: #dde3ee; --surface: #ffffff; --surface2: #e8ecf4;
+  --line: #c4cde0; --line-strong: #6b7a99; --fg: #141a26; --muted: #55627c;
+  --concert: #0a76ad; --party: #9a6000; --good: #14804a; --bad: #b3261e;
+}
+body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 15px; line-height: 1.55; padding-block: 28px 56px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.wrap { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 40px; }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; letter-spacing: -0.01em; }
+h1 { font-size: clamp(28px, 5vw, 42px); line-height: 1.1; }
+h2 { font-size: 22px; }
+h3 { font-size: 17px; }
+p { margin: 0; }
+code { font-family: var(--mono); font-size: 0.9em; }
+.lede { color: var(--muted); max-width: 68ch; margin-top: 10px; }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+section { display: flex; flex-direction: column; gap: 16px; }
+
+.rules { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.rule { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; min-width: 0; }
+.rule b { display: block; font-family: var(--display); margin-bottom: 2px; }
+.rule span { color: var(--muted); font-size: 14px; }
+
+/* run of show */
+.runbar { display: flex; gap: 3px; }
+.seg { min-width: 0; padding: 8px 4px 7px; border-radius: 4px; background: var(--surface); border: 1px solid var(--line); border-top-width: 4px; font-family: var(--mono); font-size: 12px; text-align: center; overflow: hidden; white-space: nowrap; }
+.seg.party { border-top-color: var(--party); }
+.seg.concert { border-top-color: var(--concert); }
+.seg.brand { border-top-color: var(--line-strong); }
+.seg small { display: block; color: var(--muted); font-size: 11px; }
+.legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+.legend i { display: inline-block; width: 14px; height: 4px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+
+/* pitch */
+.pitch { display: grid; gap: 16px; grid-template-columns: 1.1fr 1fr; }
+.script { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 18px 20px; font-size: 16px; min-width: 0; }
+.script p + p { margin-top: 10px; }
+.beats { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.beats li { display: grid; grid-template-columns: 52px 1fr; gap: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.beats time { font-family: var(--mono); font-size: 13px; color: var(--concert); }
+.beats span { font-size: 14px; }
+
+/* shots */
+.shots { display: grid; gap: 18px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.shot { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
+.shot-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; flex-wrap: wrap; }
+.no { font-family: var(--display); font-weight: 700; font-size: 20px; width: 28px; }
+.time { font-family: var(--mono); font-size: 13px; color: var(--muted); }
+.chips { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+.chip.scene { color: var(--muted); }
+.chip.ready { color: var(--good); }
+.chip.wip { color: var(--party); }
+.chip.todo { color: var(--bad); }
+.shot svg { display: block; width: 100%; height: auto; background: var(--void); border-block: 1px solid var(--line); }
+.shot-body { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 10px; }
+dl { margin: 0; display: grid; grid-template-columns: 78px 1fr; gap: 6px 12px; font-size: 14px; }
+dt { color: var(--muted); font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; padding-top: 2px; }
+dd { margin: 0; min-width: 0; }
+.say { font-family: var(--display); font-size: 16px; }
+
+/* sketch strokes */
+.v { fill: var(--void); }
+.l { fill: none; stroke: var(--line-strong); stroke-width: 1.3; }
+.d { stroke-dasharray: 4 4; }
+.fl { fill: var(--surface2); stroke: var(--line-strong); stroke-width: 1.3; }
+.cp { fill: none; stroke: var(--party); stroke-width: 2; }
+.cc { fill: none; stroke: var(--concert); stroke-width: 2; }
+.ccf { fill: var(--concert); }
+.cube { fill: none; stroke: var(--concert); stroke-width: 1.4; }
+.t { fill: var(--muted); font: 9px var(--mono); }
+.tb { fill: var(--fg); font: 700 15px var(--display); }
+.pin { fill: var(--surface2); stroke: var(--line-strong); stroke-width: 1.3; }
+.pin.on { fill: var(--concert); stroke: var(--concert); }
+
+/* cards and tables */
+.cards { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.card ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+.rec { color: var(--good); font-weight: 600; }
+.tablewrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; min-width: 560px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); font-weight: 500; }
+td.num, th.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.note { color: var(--muted); font-size: 14px; }
+
+@media (max-width: 760px) {
+  .shots, .pitch { grid-template-columns: minmax(0, 1fr); }
+  dl { grid-template-columns: 1fr; gap: 2px; }
+  dt { padding-top: 8px; }
+  .seg small { display: none; }
+}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">KAN-17 · Rewind · HackPrinceton</div>
+  <h1>Cardboard Demo Storyboard</h1>
+  <p class="lede">A 40 second pitch. Then the judge puts on headphones and the Cardboard and watches a 65 second video: the party scene, then the concert. Nine panels below cover the five scenes, with time codes, voiceover and sound.</p>
+</header>
+
+<section>
+  <h2>Rules the video has to follow</h2>
+  <div class="rules">
+    <div class="rule"><b>Recreated, not recorded</b><span>The voiceover says the room is generated and the clips come from the internet. Keep a small caption for each as well.</span></div>
+    <div class="rule"><b>Head turns only</b><span>The viewer looks around but never walks. No shot moves the camera, and none shows people rebuilt in 3D.</span></div>
+    <div class="rule"><b>One video, no live app</b><span>Everything is pre-rendered, so it plays the same every time. This video is also the KAN-16 backup.</span></div>
+  </div>
+</section>
+
+<section>
+  <h2>Run of show</h2>
+  <div class="runbar" role="img" aria-label="Nine segments, 65 seconds in total">
+    <div class="seg brand" style="flex: 6">1<small>6 s</small></div>
+    <div class="seg party" style="flex: 8">2<small>8 s</small></div>
+    <div class="seg party" style="flex: 5">3<small>5 s</small></div>
+    <div class="seg party" style="flex: 7">4<small>7 s</small></div>
+    <div class="seg brand" style="flex: 4">5<small>4 s</small></div>
+    <div class="seg concert" style="flex: 10">6<small>10 s</small></div>
+    <div class="seg concert" style="flex: 8">7<small>8 s</small></div>
+    <div class="seg concert" style="flex: 8">8<small>8 s</small></div>
+    <div class="seg brand" style="flex: 9">9<small>9 s</small></div>
+  </div>
+  <div class="legend">
+    <span><i style="background: var(--party)"></i>Party mode</span>
+    <span><i style="background: var(--concert)"></i>Concert mode</span>
+    <span><i style="background: var(--line-strong)"></i>Title, transition and logo</span>
+  </div>
+</section>
+
+<section>
+  <h2>Before the headset: the pitch</h2>
+  <div class="pitch">
+    <div class="script">
+      <p>Most of us have a video we can't step back into. Rewind lets you stand inside it.</p>
+      <p>Party mode takes an old video and builds the room around it, so you watch the original video exactly as it was filmed while you look around the place it was filmed. Concert mode takes fans' clips of the same song from the internet, finds where each fan stood, and lets you move between their seats with the music in sync.</p>
+      <p>Everything around the video is generated by AI, not recorded. You can look around, but you can't walk around.</p>
+      <p>Put on the headphones, then the Cardboard, and look straight ahead.</p>
+    </div>
+    <ol class="beats">
+      <li><time>0:00</time><span><b>The problem.</b> A video you can only watch from outside.</span></li>
+      <li><time>0:10</time><span><b>The idea.</b> Rewind puts you inside it. Two modes.</span></li>
+      <li><time>0:28</time><span><b>The honest line.</b> Generated, not recorded. Look, don't walk.</span></li>
+      <li><time>0:36</time><span><b>The handover.</b> Headphones first, then the Cardboard. Stay quiet during the video.</span></li>
+    </ol>
+  </div>
+</section>
+
+<section>
+  <h2>The video, shot by shot</h2>
+  <div class="shots">
+
+    <article class="shot">
+      <div class="shot-head"><span class="no">1</span><span class="time">0:00 to 0:06</span><span class="chips"><span class="chip scene">Scene 1</span><span class="chip ready">Ready to make</span></span></div>
+      <svg viewBox="0 0 320 180" role="img" aria-label="A black screen with the title From memories to reality fading in and out">
+        <rect class="v" width="320" height="180"/>
+        <text class="tb" x="160" y="92" text-anchor="middle" style="font-size: 17px">From memories to reality</text>
+        <path class="l" d="M60 140h40M110 140h60M180 140h40" style="stroke-opacity: .9"/>
+        <path class="l d" d="M60 150h40" /><path class="l" d="M110 150h60"/><path class="l d" d="M180 150h40"/>
+        <text class="t" x="60" y="166">fade in</text><text class="t" x="122" y="166">hold</text><text class="t" x="180" y="166">fade out</text>
+        <circle class="l" cx="276" cy="30" r="13"/><text class="t" x="268" y="33">VO</text>
+      </svg>
+      <div class="shot-body">
+        <h3>From memories to reality</h3>
+        <dl>
+          <dt>Sees</dt><dd>Black. At 0:01 the text fades in over 1 second, holds, and fades out over 1 second, ending at 0:06.</dd>
+          <dt>Voice</dt><dd class="say">"From memories to reality."</dd>
+          <dt>Sound</dt><dd>Voice only, starting about 0:01.5. A very quiet room tone helps the silence feel intentional.</dd>
+          <dt>Head</dt><dd>Straight ahead. Put the text right where the viewer starts looking.</dd>
+        </dl>
+      </div>
+    </article>
+
+    <article class="shot">
+      <div class="shot-head"><span class="no">2</span><span class="time">0:06 to 0:14</span><span class="chips"><span class="chip scene">Scene 1</span><span class="chip ready">Ready to make</span></span></div>
+      <svg viewBox="0 0 320 180" role="img" aria-label="A small video frame in black that grows to its final size, with an audio fade-up ramp below">
+        <rect class="v" width="320" height="180"/>
+        <rect class="cp" x="96" y="38" width="128" height="76" rx="2"/>
+        <rect class="fl d" x="140" y="64" width="40" height="24" rx="2"/>
+        <path class="l" d="M140 64L96 38M180 64L224 38M140 88L96 114M180 88L224 114"/>
+        <text class="t" x="96" y="130">final size, matches the room</text>
+        <path class="cp" d="M20 164L100 150" style="stroke-width: 3"/><path class="l" d="M20 164H100V150"/>
+        <text class="t" x="110" y="162">audio fades up with the picture</text>
+      </svg>
+      <div class="shot-body">
+        <h3>The video appears</h3>
+        <dl>
+          <dt>Sees</dt><dd>The original party video fades in small, in the middle, with black all around it. Over 6 seconds it grows to its final size. It then sits at full size for a slight pause (0:12 to 0:14).</dd>
+          <dt>Sound</dt><dd>The video's own audio fades in with the picture (0:06 to 0:12) and reaches full volume at the pause.</dd>
+          <dt>Head</dt><dd>Straight ahead. Looking around shows only black, which is fine.</dd>
+          <dt>Needs</dt><dd>The party video trimmed to about 20 seconds. Its final size here has to match exactly how it sits in the room in panel 3, or the build will jump.</dd>
+        </dl>
+      </div>
+    </article>
+
+    <article class="shot">
+      <div class="shot-head"><span class="no">3</span><span class="time">0:14 to 0:19</span><span class="chips"><span class="chip scene">Scene 2</span><span class="chip todo">Needs room + effect</span></span></div>
+      <svg viewBox="0 0 320 180" role="img" aria-label="The video frame with small cubes appearing around it, getting sparser further out">
+        <rect class="v" width="320" height="180"/>
+        <rect class="fl" x="108" y="60" width="104" height="60"/>
+        <path class="l" d="M118 72h30M166 70h30M118 106h54"/>
+        <g class="cube">
+          <rect x="94" y="48" width="10" height="10"/><rect x="112" y="42" width="8" height="8"/><rect x="132" y="38" width="10" height="10"/><rect x="154" y="44" width="8" height="8"/><rect x="176" y="40" width="10" height="10"/><rect x="198" y="46" width="8" height="8"/><rect x="214" y="50" width="10" height="10"/>
+          <rect x="226" y="68" width="8" height="8"/><rect x="224" y="88" width="10" height="10"/><rect x="228" y="108" width="8" height="8"/><rect x="218" y="126" width="10" height="10"/><rect x="198" y="134" width="8" height="8"/><rect x="176" y="132" width="10" height="10"/><rect x="154" y="138" width="8" height="8"/>
+          <rect x="130" y="134" width="10" height="10"/><rect x="110" y="130" width="8" height="8"/><rect x="94" y="120" width="10" height="10"/><rect x="90" y="98" width="8" height="8"/><rect x="92" y="76" width="10" height="10"/>
+          <g style="opacity: .55"><rect x="70" y="36" width="6" height="6"/><rect x="250" y="42" width="6" height="6"/><rect x="262" y="96" width="6" height="6"/><rect x="246" y="142" width="6" height="6"/><rect x="66" y="126" width="6" height="6"/><rect x="158" y="22" width="6" height="6"/><rect x="160" y="158" width="6" height="6"/></g>
+          <g style="opacity: .3"><rect x="36" y="90" width="5" height="5"/><rect x="286" y="90" width="5" height="5"/></g>
+        </g>
+        <text class="t" x="14" y="172">cubes build outward from the frame</text>
+      </svg>
+      <div class="shot-body">
+        <h3>Rewind to the past</h3>
+        <dl>
+          <dt>Sees</dt><dd>At 0:15.5, as the last word is said, cubes start building the room outward from the edges of the video frame. The room is complete by 0:19. The video keeps playing the whole time. This is the halfway point of a 20 second clip.</dd>
+          <dt>Voice</dt><dd class="say">"Rewind to the past."</dd>
+          <dt>Sound</dt><dd>Party audio continues. An optional soft tape-rewind whoosh under the cubes ties to the name.</dd>
+          <dt>Head</dt><dd>Straight ahead while the cubes build.</dd>
+          <dt>Needs</dt><dd>The Marble room (KAN-8, KAN-9, real run not done yet) and the cube effect, which is not built. How to make it is in the ideas below.</dd>
+        </dl>
+      </div>
+    </article>
+
+    <article class="shot">
+      <div class="shot-head"><span class="no">4</span><span class="time">0:19 to 0:26</span><span class="chips"><span class="chip scene">Scene 2</span><span class="chip wip">Needs room</span></span></div>
+      <svg viewBox="0 0 320 180" role="img" aria-label="The finished recreated room around the party video with arrows to look left and right">
+        <defs><pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="var(--surface2)"/><path d="M0 0V6" stroke="var(--line)" stroke-width="2"/></pattern></defs>
+        <rect class="v" width="320" height="180"/>
+        <polygon fill="url(#hatch)" class="l" points="20,12 70,40 70,140 20,168"/>
+        <polygon fill="url(#hatch)" class="l" points="300,12 250,40 250,140 300,168"/>
+        <polygon fill="url(#hatch)" class="l" points="20,168 70,140 250,140 300,168"/>
+        <rect class="fl" x="70" y="40" width="180" height="100"/>
+        <rect class="fl" x="124" y="60" width="72" height="54" style="stroke: var(--party); stroke-width: 2"/>
+        <path class="l" d="M132 72h22M170 70h20M132 102h44"/>
+        <rect class="fl" x="106" y="118" width="108" height="18" rx="4"/>
+        <path class="cp" d="M42 96H20m6-5-6 5 6 5M278 96h22m-6-5 6 5-6 5"/>
+        <text class="t" x="20" y="178">hatched = generated, solid = original video</text>
+      </svg>
+      <div class="shot-body">
+        <h3>Look around</h3>
+        <dl>
+          <dt>Sees</dt><dd>The finished room, with the original video playing in the middle. The viewer is free to look around for about 7 seconds. A small caption near the bottom reads "Original video preserved. Room generated."</dd>
+          <dt>Voice</dt><dd class="say">"The original video is preserved while the room is generated around you."</dd>
+          <dt>Sound</dt><dd>Voice runs 0:19 to about 0:23.5. The party audio dips 8 dB under it, then returns. The video ends at 0:26.</dd>
+          <dt>Head</dt><dd>Free look. The recreated parts look best within about 60° left and right of the video.</dd>
+        </dl>
+      </div>
+    </article>
+
+    <article class="shot">
+      <div class="shot-head"><span class="no">5</span><span class="time">0:26 to 0:30</span><span class="chips"><span class="chip scene">Scene 3</span><span class="chip todo">Not built</span></span></div>
+      <svg viewBox="0 0 320 180" role="img" aria-label="Three small frames: the room falling apart into cubes, a black title card, and a spotlight circle opening onto the stadium">
+        <rect class="v" width="320" height="180"/>
+        <rect class="l" x="12" y="40" width="92" height="58"/>
+        <g class="cube"><rect x="24" y="52" width="10" height="10"/><rect x="48" y="60" width="8" height="8" transform="rotate(14 52 64)"/><rect x="70" y="50" width="9" height="9" transform="rotate(-20 74 54)"/><rect x="34" y="74" width="7" height="7" transform="rotate(30 37 77)"/><rect x="82" y="72" width="8" height="8" transform="rotate(10 86 76)"/></g>
+        <text class="t" x="12" y="116">room falls apart</text>
+        <path class="l" d="M108 69h6m-4-4 4 4-4 4"/>
+        <rect class="l" x="114" y="40" width="92" height="58"/>
+        <text class="tb" x="160" y="73" text-anchor="middle" style="font-size: 9.5px">Or be in the crowd</text>
+        <text class="t" x="114" y="116">title card, 3 s</text>
+        <path class="l" d="M210 69h6m-4-4 4 4-4 4"/>
+        <rect class="l" x="216" y="40" width="92" height="58"/>
+        <circle class="cc" cx="262" cy="69" r="20"/>
+        <path class="l" d="M240 84h44M246 76l16-8 16 8" style="stroke-opacity: .7"/>
+        <text class="t" x="216" y="116">spotlight opens, not a fade</text>
+        <text class="t" x="12" y="150">0:26</text><text class="t" x="114" y="150">0:27</text><text class="t" x="216" y="150">0:30</text>
+      </svg>
+      <div class="shot-body">
+        <h3>Or be in the crowd</h3>
+        <dl>
+          <dt>Sees</dt><dd>The room falls apart into cubes and goes black (0:26 to 0:27). A black card reads "Or be in the crowd" (0:27 to 0:29.5). A transition that is not a fade brings in the stadium at 0:30.</dd>
+          <dt>Voice</dt><dd class="say">"Or be in the crowd."</dd>
+          <dt>Sound</dt><dd>The party music tails out under the card. The stadium audio arrives with the new picture, on a beat.</dd>
+          <dt>Needs</dt><dd>A choice of transition. There are four options in the ideas below, with a recommendation.</dd>
+        </dl>
+      </div>
+    </article>
+
+    <article class="shot">
+      <div class="shot-head"><span class="no">6</span><span class="time">0:30 to 0:40</span><span class="chips"><span class="chip scene">Scenes 3, 4</span><span class="chip wip">Needs seats</span></span></div>
+      <svg viewBox="0 0 320 180" role="img" aria-label="A stadium view from the center seat with three map pins, the current one circled, and a countdown at the bottom">
+        <rect class="v" width="320" height="180"/>
+        <rect class="fl" x="96" y="38" width="128" height="44"/>
+        <rect class="cc" x="114" y="46" width="92" height="28" rx="1"/>
+        <path class="l d" d="M100 38L70 10M220 38L250 10M160 38V8"/>
+        <g class="l"><path d="M20 118q40-18 80-4t120 0 80 4" /><path d="M10 134q50-14 100 0t100 0 100 0"/></g>
+        <g><circle class="cc" cx="160" cy="130" r="14"/>
+          <path class="pin on" d="M160 134C156 127 153 124 153 119A7 7 0 1 1 167 119C167 124 164 127 160 134Z"/><circle cx="160" cy="119" r="2.5" fill="var(--void)"/>
+          <path class="pin" transform="translate(222 120)" d="M0 0C-4 -7 -7 -10 -7 -15A7 7 0 1 1 7 -15C7 -10 4 -7 0 0Z"/>
+          <path class="pin" transform="translate(262 100) scale(.85)" d="M0 0C-4 -7 -7 -10 -7 -15A7 7 0 1 1 7 -15C7 -10 4 -7 0 0Z"/></g>
+        <text class="t" x="143" y="156">Center</text>
+        <text class="t" x="102" y="174">Moving to seat 2 in 5</text>
+        <circle class="l" cx="92" cy="171" r="5"/><path class="cc" d="M92 166a5 5 0 0 1 5 5" />
+      </svg>
+      <div class="shot-body">
+        <h3>Center seat, 10 s</h3>
+        <dl>
+          <dt>Sees</dt><dd>A center seat in the stadium, with one fan's clip on the stage. At 0:34 map-style pins fade in where the other fans stood. The current seat has a circle around its pin. At 0:35 a small countdown starts: "Moving to seat 2 in 5".</dd>
+          <dt>Voice</dt><dd class="say">"By clips gathered from the internet, you can experience the concert yourself." (0:30.5)<br>"Enjoy the thrill from all angles." (0:36.5)</dd>
+          <dt>Sound</dt><dd>Concert audio from 0:30. It dips 8 dB under each line of voice.</dd>
+          <dt>Needs</dt><dd>Real seats and the venue from KAN-13. Which clip goes in which seat is in the seat plan below.</dd>
+        </dl>
+      </div>
+    </article>
+
+    <article class="shot">
+      <div class="shot-head"><span class="no">7</span><span class="time">0:40 to 0:48</span><span class="chips"><span class="chip scene">Scene 4</span><span class="chip wip">Needs seats</span></span></div>
+      <svg viewBox="0 0 320 180" role="img" aria-label="A close view of a big stage from the front seat, with pins and a countdown">
+        <rect class="v" width="320" height="180"/>
+        <rect class="fl" x="50" y="30" width="220" height="86"/>
+        <rect class="cc" x="76" y="42" width="168" height="58" rx="1"/>
+        <path class="l" d="M20 140q70-22 140-6t140 0"/>
+        <g><circle class="cc" cx="160" cy="146" r="14"/>
+          <path class="pin on" d="M160 150C156 143 153 140 153 135A7 7 0 1 1 167 135C167 140 164 143 160 150Z"/><circle cx="160" cy="135" r="2.5" fill="var(--void)"/>
+          <path class="pin" transform="translate(60 128) scale(.8)" d="M0 0C-4 -7 -7 -10 -7 -15A7 7 0 1 1 7 -15C7 -10 4 -7 0 0Z"/>
+          <path class="pin" transform="translate(268 126) scale(.8)" d="M0 0C-4 -7 -7 -10 -7 -15A7 7 0 1 1 7 -15C7 -10 4 -7 0 0Z"/></g>
+        <text class="t" x="148" y="172">Front</text>
+        <text class="t" x="204" y="172">in 5</text>
+      </svg>
+      <div class="shot-body">
+        <h3>Front seat, 8 s</h3>
+        <dl>
+          <dt>Sees</dt><dd>At 0:40 the view jumps to a seat close to the front. The stage is much bigger. The circle moves to the new pin. At 0:43 the countdown starts again: "Moving to seat 3 in 5".</dd>
+          <dt>Sound</dt><dd>The music does not skip. This is the point of the audio sync.</dd>
+          <dt>Jump</dt><dd>Use a quick dip to black, 0.2 seconds, with a soft whoosh. The camera never moves, so nobody feels sick.</dd>
+        </dl>
+      </div>
+    </article>
+
+    <article class="shot">
+      <div class="shot-head"><span class="no">8</span><span class="time">0:48 to 0:56</span><span class="chips"><span class="chip scene">Scene 4</span><span class="chip wip">Needs seats</span></span></div>
+      <svg viewBox="0 0 320 180" role="img" aria-label="A distant upper-right view of a small stage with pins, the upper-right one circled and no countdown">
+        <rect class="v" width="320" height="180"/>
+        <rect class="fl" x="30" y="70" width="82" height="30"/>
+        <rect class="cc" x="40" y="76" width="62" height="18" rx="1"/>
+        <path class="l" d="M10 130q60-30 130-16t90 -2 80 6"/>
+        <g><circle class="cc" cx="262" cy="46" r="14"/>
+          <path class="pin on" d="M262 50C258 43 255 40 255 35A7 7 0 1 1 269 35C269 40 266 43 262 50Z"/><circle cx="262" cy="35" r="2.5" fill="var(--void)"/>
+          <path class="pin" transform="translate(150 132) scale(.8)" d="M0 0C-4 -7 -7 -10 -7 -15A7 7 0 1 1 7 -15C7 -10 4 -7 0 0Z"/>
+          <path class="pin" transform="translate(70 150) scale(.8)" d="M0 0C-4 -7 -7 -10 -7 -15A7 7 0 1 1 7 -15C7 -10 4 -7 0 0Z"/></g>
+        <text class="t" x="228" y="70">Upper right</text>
+        <text class="t" x="14" y="172">last seat, no countdown</text>
+      </svg>
+      <div class="shot-body">
+        <h3>Upper right seat, 8 s</h3>
+        <dl>
+          <dt>Sees</dt><dd>At 0:48 the view jumps to a far-back seat at the upper right. The stage is small and the whole venue is visible. There is no countdown. The pins stay until about 0:55 and then fade out.</dd>
+          <dt>Sound</dt><dd>Same music, still in sync. The mix starts to fade at 0:55 as the picture goes to black.</dd>
+          <dt>Head</dt><dd>Free look. This seat shows the most venue, so looking around pays off here.</dd>
+        </dl>
+      </div>
+    </article>
+
+    <article class="shot">
+      <div class="shot-head"><span class="no">9</span><span class="time">0:56 to 1:05</span><span class="chips"><span class="chip scene">Scene 5</span><span class="chip todo">Not built</span></span></div>
+      <svg viewBox="0 0 320 180" role="img" aria-label="A black screen with a rewind icon and the word Rewind, and a tagline underneath">
+        <rect class="v" width="320" height="180"/>
+        <path class="l" d="M92 82l-22 14 22 14zM116 82l-22 14 22 14z" style="stroke: var(--fg)"/>
+        <text class="tb" x="132" y="106" style="font-size: 30px">Rewind</text>
+        <text class="t" x="132" y="126" style="fill: var(--fg)">where the past becomes reality</text>
+        <path class="l d" d="M234 70H132m8-5-8 5 8 5"/>
+        <text class="t" x="134" y="62">letters assemble right to left, like tape</text>
+        <text class="t" x="14" y="172">0:56 fade out, 0:58 logo, 1:03 fade to black</text>
+      </svg>
+      <div class="shot-body">
+        <h3>Rewind logo</h3>
+        <dl>
+          <dt>Sees</dt><dd>The scene fades to black (0:56 to 0:58). The Rewind logo animates in. The letters assemble right to left, like a tape rewinding. The tagline appears. It holds, then fades to final black at 1:03 to 1:05.</dd>
+          <dt>Voice</dt><dd class="say">"Rewind: where the past becomes reality."</dd>
+          <dt>Sound</dt><dd>A short tape-rewind whoosh into a soft chime. Voice starts at about 0:59. Everything fades out by 1:05.</dd>
+          <dt>Credits</dt><dd>Optional: one small line under the tagline crediting the fan clips and the party video. See the ideas below.</dd>
+        </dl>
+      </div>
+    </article>
+
+  </div>
+</section>
+
+<section>
+  <h2>Voiceover and sound</h2>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th class="num">Time</th><th>Line</th><th>What the music does</th></tr></thead>
+      <tbody>
+        <tr><td class="num">0:01.5</td><td>"From memories to reality."</td><td>Silence under the voice.</td></tr>
+        <tr><td class="num">0:14</td><td>"Rewind to the past."</td><td>Party audio at full volume, ducked 8 dB under the voice.</td></tr>
+        <tr><td class="num">0:19</td><td>"The original video is preserved while the room is generated around you."</td><td>Party audio ducked 8 dB until about 0:23.5, then back up. Ends at 0:26.</td></tr>
+        <tr><td class="num">0:27.5</td><td>"Or be in the crowd."</td><td>Party audio has tailed out. Near silence under the card.</td></tr>
+        <tr><td class="num">0:30.5</td><td>"By clips gathered from the internet, you can experience the concert yourself."</td><td>Concert audio in, ducked 8 dB under the voice.</td></tr>
+        <tr><td class="num">0:36.5</td><td>"Enjoy the thrill from all angles."</td><td>Ducked again for 2.5 seconds, then full volume through both seat jumps.</td></tr>
+        <tr><td class="num">0:59</td><td>"Rewind: where the past becomes reality."</td><td>Music is gone. Rewind whoosh and chime only.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">Voice lines are about 1.5 to 5.5 seconds each at a calm pace, so none of them overlaps a transition. Record the voice dry and in the center of the stereo mix.</p>
+</section>
+
+<section>
+  <h2>Concert seat plan</h2>
+  <p class="note">All three seats show the same moment of the song, so the music runs straight through. These are from the audio-synced Athens clips (Yellow, 8 June 2024). Master time is the Kostas clip's own time.</p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Seat</th><th>Clip</th><th class="num">Master time</th><th class="num">Time in that clip</th><th>Where it was filmed</th></tr></thead>
+      <tbody>
+        <tr><td>1, Center, 10 s</td><td>TheValia6</td><td class="num">0:49 to 0:59</td><td class="num">0:22.4 to 0:32.4</td><td>Far back, center. Light panning.</td></tr>
+        <tr><td>2, Front, 8 s</td><td>krhtikos4</td><td class="num">0:59 to 1:07</td><td class="num">0:38.3 to 0:46.3</td><td>Close to the front. Steady.</td></tr>
+        <tr><td>3, Upper right, 8 s</td><td>Can Uzunyol</td><td class="num">1:07 to 1:15</td><td class="num">1:23.7 to 1:31.7</td><td>Far back, up, right. Mainly steady.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note">The zoom and shake check covered master 0:49 to 1:09. This plan runs to 1:15, so the last 6 seconds of seat 3 have not been checked. Can Uzunyol's offset is also the least certain, about 0.15 seconds, so listen to the seat 2 to seat 3 join. One audio track (Valia's, which synced best) can run under all three seats so the sound never changes at a jump.</p>
+</section>
+
+<section>
+  <h2>Ideas to flesh it out</h2>
+  <div class="cards">
+    <div class="card">
+      <h3>Make Rewind the visual motif</h3>
+      <ul>
+        <li>A tape-rewind whoosh under the cube build and again under the logo.</li>
+        <li>The rewind icon (two left-pointing triangles) as the logo mark.</li>
+        <li>The logo letters assembling right to left, like tape winding back.</li>
+      </ul>
+      <p class="note">This ties the name to the pictures without adding any shots.</p>
+    </div>
+    <div class="card">
+      <h3>Building the cubes</h3>
+      <ul>
+        <li><span class="rec">Recommended:</span> do it in the edit. Render two 360 clips from the same spot: the black sphere with the video at its final size, and the finished room. Reveal the room over the black one with a cell mask that grows outward from the frame, nearest cells first, each cell popping in over about 0.3 seconds, whole build about 3.5 seconds.</li>
+        <li>Alternative: reveal the splat cell by cell with a shader in the app. This gives real 3D cubes, but it needs engineering and I haven't checked that the viewer library supports it.</li>
+        <li>Tint the new cubes slightly blue so the generated part reads as generated. Cells look stretched near the top and bottom of a 360 frame, so keep them small there.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Transition into the concert</h3>
+      <ul>
+        <li><span class="rec">Recommended:</span> a spotlight iris. A circle of light opens from the center of the black title card and reveals the stadium, with the crowd audio hitting on the first beat.</li>
+        <li>Cube collapse into a white camera flash, then cut. Repeats the cube idea in reverse.</li>
+        <li>Rewind scrub. The party video runs backward fast with a tape whoosh into white, then cuts to the stadium. Uses the motif a second time.</li>
+        <li>Match cut. The video frame shrinks to a point of light that grows into the stage screen. Needs precise alignment.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Seat pins and the countdown</h3>
+      <ul>
+        <li>Place the pins where each fan stood, so they look anchored in the venue.</li>
+        <li>Label each seat in plain words (Center, Front, Upper right) under the pin.</li>
+        <li>A video can't keep text in front of the viewer's face. Put the countdown low in front at the start of each seat, and repeat it at two more spots 120° apart so it is visible whichever way they look.</li>
+        <li>A small top-down seat map near the bottom of the view with a "you are here" dot would make the pins easier to read.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Honesty and credits</h3>
+      <ul>
+        <li>Small captions backing up the voice: "Original video preserved. Room generated." in panel 4 and "Venue recreated from fan clips" at the start of panel 6.</li>
+        <li>Credit the fan clips and the party video in one small line on the end card, or in the submission text if it doesn't fit.</li>
+        <li>The Athens clips and the party video need permission if the demo goes public.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Playing it in the Cardboard</h3>
+      <ul>
+        <li>Render as a 360 video at 3840 x 1920 and 30 fps, and play it in a phone 360 player.</li>
+        <li>Put titles and the first view straight ahead. Ask the judge to look forward and tap to recenter before pressing play.</li>
+        <li>A mono 360 video has no depth. That is fine here because nothing moves toward the viewer.</li>
+        <li>Test on a real phone in the Cardboard before the event: text size, brightness of the title card, and head-turn comfort.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>What has to happen before the video can be made</h2>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Needed for</th><th>What</th><th>Ticket</th><th>State</th></tr></thead>
+      <tbody>
+        <tr><td>Panels 2 to 4</td><td>Party video trimmed to about 20 seconds, and the Marble room loaded and lined up with it</td><td>KAN-8, KAN-9</td><td>In progress, real Marble run not done</td></tr>
+        <tr><td>Panels 6 to 8</td><td>Venue and seats from the fan clips</td><td>KAN-13</td><td>In progress, registration not tested</td></tr>
+        <tr><td>Panels 6 to 8</td><td>Audio offsets and the seat plan above</td><td>KAN-12</td><td>Done</td></tr>
+        <tr><td>Panels 3, 5</td><td>Cube build and concert transition</td><td>new</td><td>Not started</td></tr>
+        <tr><td>Panel 9</td><td>Rewind logo animation and sound</td><td>new</td><td>Not started</td></tr>
+        <tr><td>All panels</td><td>Voiceover recording, edit, mix, and the 360 render</td><td>KAN-16</td><td>To do, no owner</td></tr>
+        <tr><td>All panels</td><td>Test in a real Cardboard with headphones</td><td>KAN-16</td><td>To do</td></tr>
+        <tr><td>Panel 9</td><td>Credits and permission for the clips</td><td>KAN-17</td><td>To do</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+</div>
+</body>
+</html>
