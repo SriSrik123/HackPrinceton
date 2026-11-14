@@ -24,11 +24,13 @@ Last updated: Nov 14, 2026 (branch `Sri`)
 
 - `node --test test/concert.test.mjs test/frames.test.mjs`: 17 pass (clock, seat parsing including Neven's real file, flip, frame extraction end to end on generated videos).
 - Headless Chrome run of `concert.html`: 33 checks pass (jumping, clock, offsets, gaze, real video sync, Neven's seats, flip, `?data` path rejection).
+- **Concert mode on Sri's Android phone** (Galaxy Z Flip6, Chrome 157, over USB): 13 checks pass. Dummy scene, Start tap starts the clock, seat buttons and screen tap on a marker jump seats, real video plays unmuted in sync (within 0.2 s) and follows master minus offset after a jump, other seats pause, Cardboard (gyro) mode gives stereo + live gyro + fullscreen landscape, Neven's `cameras.json` loads. 60 fps mono, 87 fps stereo, no errors.
 
 ## Not verified yet
 
 - The real Marble API (no paid run yet) and a real Marble room on the phone.
-- Concert mode on a phone or in the Cardboard; the real venue splat in the concert viewer (`venue-test.spz` is on Drive, not on this laptop), so seat-to-venue alignment is unchecked here.
+- Concert mode in the Cardboard (gaze selection through the lenses); that the clip sound is actually heard on the phone (it reports playing and unmuted); the real venue splat in the concert viewer (`venue-test.spz` is on Drive, not on this laptop), so seat-to-venue alignment and frame rate with a splat are unchecked. Enter VR is greyed out on the phone, so the Cardboard uses gyro mode.
+- Every seat's video preloads at once; fine with one test clip, watch it with 3 to 4 real clips.
 - The predicted `frame_XXXXX` names against a real `ns-process-data` run.
 - Cardboard lens distortion (none yet), iPhone, frame rate at 500k vs 100k.
 
