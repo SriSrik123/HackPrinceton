@@ -3,13 +3,16 @@
 // from that seat's spot. All clips play from one master clock (src/masterClock.js).
 //
 // Data (all optional while the venue is being built; the page falls back to a dummy scene):
-//   public/concert/cameras.json   seats, see src/seats.js
+//   public/concert/cameras.json   seats, see src/seats.js (Neven's scripts/export-cameras.mjs writes it)
 //   public/concert/stage.glb      invisible stage panel (and floor) the clips are projected onto
-//   public/concert/venue.spz      the venue splat that fills in around the projection
+//   public/concert/venue.spz      the venue splat that fills in around the projection (venue-test.spz also works)
+// Without stage.glb, each real seat projects onto its own flat panel ?panelDist in front of it.
 //
-// URL options: ?seat=N start seat (1-based) · ?t=SECONDS start master time · ?video=URL use one real
-// video for every dummy seat · ?dwell=1.5 gaze seconds · ?autoplay=1 start the clock on load ·
-// ?venueFlip=1 rotate the venue splat 180 degrees around X · ?debug=1 stage wireframe + frustums + readout.
+// URL options: ?data=concert-test read another folder of public/ · ?seat=N start seat (1-based) ·
+// ?t=SECONDS start master time · ?video=URL use one real video for every seat without one ·
+// ?dwell=1.5 gaze seconds · ?autoplay=1 start the clock on load · ?venueFlip=1 rotate venue, stage and
+// seats together 180 degrees around X · ?panelDist=1 stand-in panel distance (scene units) ·
+// ?markerScale= seat marker size (default from the seat spacing) · ?debug=1 wireframes + frustum + readout.
 // Per-projection options from src/projection.js (?projFov=...) also apply to every seat.
 
 import * as THREE from "three";
@@ -19,10 +22,10 @@ import { StereoEffect } from "three/addons/effects/StereoEffect.js";
 import { LookControls } from "./lookControls.js";
 import { addProjection } from "./projection.js";
 import { MasterClock, clipTime, planClip } from "./masterClock.js";
-import { parseSeats, dummySeats, verticalFov } from "./seats.js";
+import { parseSeats, dummySeats, verticalFov, seatSpacing } from "./seats.js";
 
-const DATA_DIR = "./concert/";
 const params = new URLSearchParams(location.search);
+const DATA_DIR = /^[\w-]+$/.test(params.get("data") ?? "") ? `./${params.get("data")}/` : "./concert/"; // a folder name only
 const num = (key, fallback) => (params.has(key) && Number.isFinite(Number(params.get(key))) ? Number(params.get(key)) : fallback);
 const opt = {
   seat: num("seat", 1) - 1,
@@ -31,8 +34,12 @@ const opt = {
   video: params.get("video"),
   autoplay: params.get("autoplay") === "1",
   venueFlip: params.get("venueFlip") === "1",
+  panelDist: num("panelDist", 1),
+  markerScale: num("markerScale", null),
   debug: params.get("debug") === "1",
 };
+const rad = THREE.MathUtils.degToRad;
+let markerScale = 1;
 const COOLDOWN = 1.0; // seconds after a jump before the next gaze selection can fire
 
 const statusEl = document.getElementById("status");
@@ -94,10 +101,12 @@ class VideoClip {
 // Stand-in for a clip while there is no footage: shows the seat name and its own clip time, so the
 // master clock and offsets can be seen working.
 class FakeClip {
-  constructor(label, hue) {
+  // aspect: the seat's frame shape (portrait clips are < 1), so the fake frame covers the same area
+  constructor(label, hue, aspect = 16 / 9) {
     this.label = label;
     this.hue = hue;
-    this.canvas = Object.assign(document.createElement("canvas"), { width: 1280, height: 720 });
+    const [W, H] = aspect >= 1 ? [1280, Math.round(1280 / aspect)] : [Math.round(1280 * aspect), 1280];
+    this.canvas = Object.assign(document.createElement("canvas"), { width: W, height: H });
     this.source = new THREE.CanvasTexture(this.canvas);
     this.lastTenth = NaN;
   }
@@ -107,21 +116,23 @@ class FakeClip {
     const tenth = Math.floor(t * 10);
     if (tenth !== this.lastTenth) {
       this.lastTenth = tenth;
+      const { width: W, height: H } = this.canvas;
+      const u = Math.min(W, H) / 720; // text and grid scale with the short side
       const g = this.canvas.getContext("2d");
       g.fillStyle = `hsl(${this.hue} 55% 28%)`;
-      g.fillRect(0, 0, 1280, 720);
+      g.fillRect(0, 0, W, H);
       g.strokeStyle = "#fff4";
       g.lineWidth = 2;
-      for (let x = 0; x <= 1280; x += 80) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, 720); g.stroke(); }
-      for (let y = 0; y <= 720; y += 80) { g.beginPath(); g.moveTo(0, y); g.lineTo(1280, y); g.stroke(); }
+      for (let x = 0; x <= W; x += 80 * u) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke(); }
+      for (let y = 0; y <= H; y += 80 * u) { g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
       g.fillStyle = "#fff";
       g.textAlign = "center";
-      g.font = "bold 150px sans-serif";
-      g.fillText(this.label, 640, 300);
-      g.font = "bold 110px monospace";
-      g.fillText(`clip ${t.toFixed(1)} s`, 640, 460);
+      g.font = `bold ${Math.round(Math.min(150 * u, (W * 0.9) / Math.max(4, this.label.length) * 1.8))}px sans-serif`;
+      g.fillText(this.label, W / 2, H / 2 - 60 * u);
+      g.font = `bold ${Math.round(100 * u)}px monospace`;
+      g.fillText(`clip ${t.toFixed(1)} s`, W / 2, H / 2 + 100 * u);
       g.fillStyle = "#ffd84a"; // a bar that sweeps once every 10 clip seconds
-      g.fillRect(((t % 10) / 10) * 1180, 560, 100, 60);
+      g.fillRect(((t % 10) / 10) * (W - 100 * u), H / 2 + 200 * u, 100 * u, 60 * u);
       this.source.needsUpdate = true;
     }
     return "playing";
@@ -137,7 +148,7 @@ async function loadSeats() {
   try {
     const res = await fetch(DATA_DIR + "cameras.json", { headers: { Accept: "application/json" } });
     if (!res.ok || isHtml(res)) return { seats: dummySeats(opt.video), dummy: true };
-    return { seats: parseSeats(await res.json()), dummy: false };
+    return { seats: parseSeats(await res.json(), { flip: opt.venueFlip }), dummy: false };
   } catch (e) {
     if (e instanceof SyntaxError || /Seat|cameras\.json/.test(e.message)) throw e; // a broken file should be loud
     return { seats: dummySeats(opt.video), dummy: true };
@@ -145,16 +156,21 @@ async function loadSeats() {
 }
 
 // The stage panel the clips are projected onto. Hidden unless ?debug=1; projection.js makes the
-// hidden meshes catch the video.
+// hidden meshes catch the video. Real seats without a stage.glb get null here and a panel each
+// (seatPanel), because the dummy stage below is sized in meters for the dummy seats.
 async function loadStage(dummy) {
   if (!dummy) {
     try {
+      const head = await fetch(DATA_DIR + "stage.glb", { method: "HEAD" });
+      if (!head.ok || isHtml(head)) return null;
       const gltf = await new GLTFLoader().loadAsync(DATA_DIR + "stage.glb");
       gltf.scene.traverse((o) => { if (o.isMesh) o.visible = false; });
+      if (opt.venueFlip) gltf.scene.quaternion.set(1, 0, 0, 0); // same frame as the venue and seats
       scene.add(gltf.scene);
       return gltf.scene;
     } catch (e) {
-      console.warn("[concert] stage.glb missing or failed to load; using a flat stand-in panel", e);
+      console.warn("[concert] stage.glb failed to load; using a panel in front of each seat", e);
+      return null;
     }
   }
   const group = new THREE.Group();
@@ -181,15 +197,19 @@ async function loadStage(dummy) {
   return group;
 }
 
-// The venue splat, if public/concert/venue.spz exists. Its coordinate frame is not known yet
-// (splatfacto output after dataparser_transforms.json), so ?venueFlip=1 is there if it is upside down.
+// The venue splat (venue.spz, or Neven's venue-test.spz). It shares the seats' frame (both come out
+// of the same splatfacto run), so it is not moved. ?venueFlip=1 turns venue, stage and seats together.
 async function loadVenue() {
   try {
-    const head = await fetch(DATA_DIR + "venue.spz", { method: "HEAD" });
-    if (!head.ok || isHtml(head)) return null;
+    let file = null;
+    for (const name of ["venue.spz", "venue-test.spz"]) {
+      const head = await fetch(DATA_DIR + name, { method: "HEAD" });
+      if (head.ok && !isHtml(head)) { file = name; break; }
+    }
+    if (!file) return null;
     const { SparkRenderer, SplatMesh } = await import("@sparkjsdev/spark");
     scene.add(new SparkRenderer({ renderer }));
-    const splat = new SplatMesh({ url: DATA_DIR + "venue.spz" });
+    const splat = new SplatMesh({ url: DATA_DIR + file });
     if (opt.venueFlip) splat.quaternion.set(1, 0, 0, 0);
     scene.add(splat);
     await splat.initialized;
@@ -222,10 +242,29 @@ function makeLabel(text) {
   return sprite;
 }
 
+const seatVerticalFov = (data) => (data.fovAxis === "horizontal" ? verticalFov(data.fov, data.aspect ?? 16 / 9) : data.fov);
+
+// Stand-in surface for a real seat when there is no stage.glb yet: a flat panel facing the seat,
+// ?panelDist in front of it and a bit larger than its frame (what Neven's test/concert.html does).
+function seatPanel(data) {
+  const aspect = data.aspect ?? 16 / 9;
+  const h = 2 * opt.panelDist * Math.tan(rad(seatVerticalFov(data)) / 2) * 1.2;
+  const panel = new THREE.Mesh(new THREE.PlaneGeometry(h * aspect, h), opt.debug
+    ? new THREE.MeshBasicMaterial({ color: 0x00ff88, wireframe: true, transparent: true, opacity: 0.3 })
+    : new THREE.MeshBasicMaterial({ visible: false }));
+  panel.position.set(...data.pos);
+  panel.rotation.set(rad(data.pitch), rad(data.yaw), rad(data.roll), "YXZ");
+  panel.translateZ(-opt.panelDist);
+  scene.add(panel);
+  return panel;
+}
+
 function buildSeat(data, index) {
-  const clip = opt.video || data.videoUrl ? new VideoClip(data.videoUrl ?? opt.video) : new FakeClip(data.name, (index * 110 + 200) % 360);
-  const projection = addProjection(scene, clip.source, stageSurfaces, {
-    pos: data.pos, yaw: data.yaw, pitch: data.pitch, roll: data.roll, fov: data.fovAxis === "horizontal" ? verticalFov(data.fov, 16 / 9) : data.fov,
+  const url = data.videoUrl ?? opt.video;
+  const clip = url ? new VideoClip(url) : new FakeClip(data.name, (index * 110 + 200) % 360, data.aspect ?? 16 / 9);
+  const projection = addProjection(scene, clip.source, stageSurfaces ?? [seatPanel(data)], {
+    pos: data.pos, yaw: data.yaw, pitch: data.pitch, roll: data.roll, fov: seatVerticalFov(data),
+    near: Math.min(0.1, opt.panelDist / 10),
     enabled: false, order: index + 1, debug: opt.debug && index === 0, // one frustum helper is enough
   });
   // A horizontal FOV can only be converted once the real frame size is known.
@@ -237,6 +276,7 @@ function buildSeat(data, index) {
 
   const marker = new THREE.Group();
   marker.position.set(...data.pos);
+  marker.scale.setScalar(markerScale);
   const orb = new THREE.Mesh(new THREE.SphereGeometry(0.22, 24, 16), new THREE.MeshBasicMaterial({ color: 0x4fd1ff }));
   const fill = new THREE.Mesh(new THREE.CircleGeometry(0.42, 40), new THREE.MeshBasicMaterial({ color: 0xffd84a, transparent: true, opacity: 0.85, depthTest: false }));
   fill.scale.setScalar(0.001); // grows while you look at the marker
@@ -256,7 +296,7 @@ function selectSeat(i) {
   rig.position.set(...s.pos);
   look.baseYaw = THREE.MathUtils.degToRad(s.yaw); // face the stage the way the filming phone did
   look.yaw = 0;
-  look.pitch = 0;
+  look.pitch = THREE.MathUtils.clamp(rad(s.pitch), -1.5, 1.5); // desktop: start tilted like the phone was
   look.recenter();
   rig.rotation.y = look.baseYaw;
   gaze.target = null;
@@ -366,6 +406,7 @@ renderer.setAnimationLoop(() => {
   statusEl.textContent = `${cur.data.name} (seat ${current + 1} of ${seats.length})\n`
     + (clock.playing ? "" : "Paused. Tap Start.\n")
     + `master ${master.toFixed(1)} s · clip ${ct.toFixed(1)} s${ct < 0 ? " (not started yet)" : ""}`
+    + (cur.data.offsetKnown ? "" : " · audio offset unknown")
     + (opt.debug ? `\ngaze ${gaze.target === null ? "-" : seats[gaze.target].data.name} ${gaze.t.toFixed(2)} s` : "");
 
   if (stereo && !renderer.xr.isPresenting) stereo.render(scene, camera);
@@ -384,10 +425,12 @@ async function main() {
     setStatus("cameras.json problem: " + e.message);
     return;
   }
-  setStatus(loaded.dummy ? "No public/concert/cameras.json yet: showing the dummy scene." : "Loading the venue...");
+  setStatus(loaded.dummy ? `No ${DATA_DIR.slice(2)}cameras.json yet: showing the dummy scene.` : "Loading the venue...");
   stageSurfaces = await loadStage(loaded.dummy);
   await loadVenue();
 
+  // Markers are sized for seats a few meters apart; shrink them for close seats or normalized units.
+  markerScale = opt.markerScale ?? Math.min(1, (seatSpacing(loaded.seats) * 0.3) / 0.7);
   seats = loaded.seats.map(buildSeat);
   const seatList = document.getElementById("seats"); // desktop shortcuts; in the Cardboard you look at markers instead
   seats.forEach((s, i) => {

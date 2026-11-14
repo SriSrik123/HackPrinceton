@@ -7,6 +7,9 @@ scripts/marble.mjs     upload video to Marble, wait, download splats + collider
 src/main.js            three.js + Spark viewer, WebXR button, Cardboard fallback
 src/projection.js      addProjection(): projects the video onto the room (see Projection below)
 test/projection.html   projection test bench: fake room, sliders, several sources (dev server only)
+src/concert.js         concert mode viewer (seats, gaze jump, master clock); seats.js, masterClock.js
+scripts/extract-frames.mjs  concert clips -> frames for COLMAP, with timestamps
+scripts/export-cameras.mjs  splatfacto run -> cameras.json (Neven)
 src/lookControls.js    gyro look (iPhone/Cardboard fallback) and drag-to-look on desktop
 src/config.js          start position, splat size, flip toggles (all overridable from the URL)
 public/world/          where the script saves the world (the page reads from here)
@@ -67,7 +70,19 @@ With no data it shows a dummy scene: three seats, a flat stage panel, and fake c
 - `stage.glb`: the invisible stage panel (and floor) the clips are projected onto.
 - `venue.spz`: the venue splat that fills in around the projection.
 
-URL options: `?seat=2`, `?t=30` (start master time), `?video=/world/source.mp4` (use one real video for every dummy seat), `?dwell=1.5`, `?autoplay=1`, `?venueFlip=1`, `?debug=1`. Logic tests: `node --test test/concert.test.mjs`.
+`venue-test.spz` is also accepted in place of `venue.spz`. Without `stage.glb`, each seat projects onto a flat panel `?panelDist` (default 1 scene unit) in front of it.
+
+URL options: `?data=concert-test` (read another folder of `public/`, for example Neven's table test), `?seat=2`, `?t=30` (start master time), `?video=/world/source.mp4` (one real video for every seat without its own), `?dwell=1.5`, `?autoplay=1`, `?venueFlip=1` (turns venue, stage and seats together), `?panelDist=1`, `?markerScale=`, `?debug=1`. Tests: `node --test test/concert.test.mjs test/frames.test.mjs`.
+
+### From clips to cameras.json
+
+1. Frames for COLMAP, 2 per second, clip-based names and timestamps:
+   ```bash
+   npm run extract-frames -- clips/seatA.mp4 clips/seatB.mp4 --walk clips/walkaround.mp4
+   ```
+   Writes `frames/` with the images, `frames.json` (clip and time of every frame, and the `images/frame_XXXXX` name `ns-process-data` should give it) and `clip-mapping.draft.json` (one seat per clip, middle frame, `offsetSeconds: null`). Add photos to `frames/` first, then re-run `npm run extract-frames -- --out frames` so the predicted names include them. Spot-check one name against the processed images.
+2. `ns-process-data images --data frames ...`, train and export (Neven, see `test/concert-README.md`).
+3. Copy the draft mapping to `clip-mapping.json`, swap any frame the exporter calls unregistered for another frame of that clip from `frames.json`, add Dave's offsets, then `npm run export-cameras -- --data public/concert --clips clip-mapping.json`.
 
 ## 2. Run the viewer
 

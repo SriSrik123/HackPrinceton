@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "marble": "node --env-file-if-exists=.env scripts/marble.mjs",
     "upload-server": "node --env-file-if-exists=.env scripts/upload-server.mjs",
-    "export-cameras": "node scripts/export-cameras.mjs"
+    "export-cameras": "node scripts/export-cameras.mjs",
+    "extract-frames": "node scripts/extract-frames.mjs"
   },
   "dependencies": {
     "@sparkjsdev/spark": "2.4.0",

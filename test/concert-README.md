@@ -43,8 +43,8 @@ The JSON envelope contains `schemaVersion`, `coordinateSystem`, `timing`,
 `limitations` and `seats`. Each seat has `name`, `sourceFrame`, `pos`, `quat`
 (camera-to-world, x/y/z/w), `fov` (vertical degrees), `width`, `height`,
 `videoUrl`, and `offsetSeconds`. Test video URLs and unknown audio offsets are
-null, not invented values. Consumers read `document.seats`; this is a proposed
-handoff contract to confirm with Dave/Sri, not an existing viewer loader.
+null, not invented values. The concert viewer reads this file as is: open
+`https://localhost:5173/concert.html?data=concert-test` (see the README, Concert mode).
 
 Select other registered frames with:
 

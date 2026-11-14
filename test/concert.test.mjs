@@ -1,4 +1,4 @@
-// Run: node --test test/
+// Run: node --test test/concert.test.mjs
 import test from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
@@ -76,4 +76,43 @@ test("dummySeats face the stage", () => {
     const toStage = new THREE.Vector3(0, 2, -8).sub(new THREE.Vector3(...s.pos)).normalize();
     assert.ok(forward(s).dot(toStage) > 0.9999, `${s.name} does not face the stage`);
   }
+});
+
+// Neven's exporter output (scripts/export-cameras.mjs), checked in as public/concert-test/cameras.json
+import fs from "node:fs";
+import { seatSpacing } from "../src/seats.js";
+const neven = JSON.parse(fs.readFileSync(new URL("../public/concert-test/cameras.json", import.meta.url)));
+
+test("parseSeats reads Neven's cameras.json: pose, portrait aspect, unknown offsets", () => {
+  const seats = parseSeats(neven);
+  assert.equal(seats.length, 3);
+  neven.seats.forEach((raw, i) => {
+    const s = seats[i];
+    assert.deepEqual(s.pos, raw.pos);
+    near(s.fov, raw.fov);
+    near(s.aspect, 1280 / 2276);
+    assert.equal(s.videoUrl, null);
+    assert.equal(s.offsetSeconds, 0);
+    assert.equal(s.offsetKnown, false);
+    // the yaw/pitch/roll the projection uses must aim where the camera-to-world quaternion does
+    const q = new THREE.Quaternion(...raw.quat).normalize();
+    const want = new THREE.Vector3(0, 0, -1).applyQuaternion(q);
+    assert.ok(forward(s).distanceTo(want) < 1e-6);
+  });
+});
+
+test("parseSeats flip turns positions and view directions 180 degrees around X", () => {
+  const plain = parseSeats(neven), flipped = parseSeats(neven, { flip: true });
+  const rx = new THREE.Quaternion(1, 0, 0, 0);
+  plain.forEach((s, i) => {
+    const f = flipped[i];
+    assert.deepEqual(f.pos, [s.pos[0], -s.pos[1], -s.pos[2]]);
+    assert.ok(forward(f).distanceTo(forward(s).applyQuaternion(rx)) < 1e-6);
+  });
+});
+
+test("seatSpacing: closest pair, Infinity for one seat", () => {
+  near(seatSpacing(dummySeats()), Math.hypot(3, 0, 1));
+  assert.equal(seatSpacing(dummySeats().slice(0, 1)), Infinity);
+  assert.ok(seatSpacing(parseSeats(neven)) < 1); // normalized units: markers must shrink
 });

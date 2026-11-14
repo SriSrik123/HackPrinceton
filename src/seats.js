@@ -13,6 +13,14 @@
 //     "axes": "opengl" (default: camera looks down -Z, y up, what nerfstudio writes) | "opencv" (looks down +Z, y down, what COLMAP writes),
 //     "fovAxis": "vertical" (default) | "horizontal" }
 // Positions and quaternions must already be in the venue's frame (dataparser_transforms.json applied).
+//
+// Neven's exporter (scripts/export-cameras.mjs, schemaVersion 1) writes exactly this: "seats" with
+// pos, quat (camera-to-world, x/y/z/w), fov (vertical), width, height, videoUrl, offsetSeconds,
+// sourceFrame. Its units are normalized scene units, not meters. A null videoUrl gets a fake clip and a
+// null offsetSeconds is treated as 0 (flagged with offsetKnown: false).
+//
+// parseSeats(json, { flip: true }) rotates the seats 180 degrees around X, to go with a venue splat
+// and stage that are flipped the same way (?venueFlip=1), so the three stay lined up.
 
 import * as THREE from "three";
 
@@ -20,12 +28,12 @@ const RX180 = new THREE.Quaternion(1, 0, 0, 0); // 180 degrees around X: OpenCV 
 const deg = THREE.MathUtils.radToDeg;
 const finite = (list) => list.every((n) => Number.isFinite(n));
 
-export function parseSeats(json) {
+export function parseSeats(json, { flip = false } = {}) {
   const list = Array.isArray(json) ? json : json?.seats ?? json?.clips;
   if (!Array.isArray(list) || list.length === 0) {
     throw new Error("cameras.json has no seats (expected a \"seats\" or \"clips\" array).");
   }
-  const wxyz = json?.quaternionOrder === "wxyz";
+  const wxyz = json?.quaternionOrder === "wxyz" || /w\s*,\s*x\s*,\s*y\s*,\s*z/.test(json?.coordinateSystem?.quaternion ?? "");
   const opencv = json?.axes === "opencv";
   const defaultFovAxis = json?.fovAxis === "horizontal" ? "horizontal" : "vertical";
 
@@ -39,7 +47,10 @@ export function parseSeats(json) {
     if (q.lengthSq() === 0) throw new Error(`Seat ${i} has a zero quaternion.`);
     q.normalize();
     if (opencv) q.multiply(RX180);
+    if (flip) { q.premultiply(RX180); pos[1] = -pos[1]; pos[2] = -pos[2]; }
     const e = new THREE.Euler().setFromQuaternion(q, "YXZ");
+    const w = Number(c.width), h = Number(c.height);
+    const offset = c.offsetSeconds ?? c.offset ?? null;
 
     return {
       name: c.name ?? `Seat ${i + 1}`,
@@ -47,10 +58,25 @@ export function parseSeats(json) {
       yaw: deg(e.y), pitch: deg(e.x), roll: deg(e.z),
       fov: Number(c.fov ?? c.fovDegrees ?? 50),
       fovAxis: c.fovAxis ?? defaultFovAxis,
+      aspect: w > 0 && h > 0 ? w / h : null, // frame shape, when the file gives it (portrait clips are < 1)
       videoUrl: c.videoUrl ?? c.video ?? null,
-      offsetSeconds: Number(c.offsetSeconds ?? c.offset ?? 0),
+      offsetSeconds: offset === null ? 0 : Number(offset),
+      offsetKnown: offset !== null,
     };
   });
+}
+
+// Smallest distance between two seats (Infinity for one seat). The page sizes the markers from it,
+// so they work both in meters and in a reconstruction's normalized units.
+export function seatSpacing(seats) {
+  let min = Infinity;
+  for (let i = 0; i < seats.length; i++) {
+    for (let j = i + 1; j < seats.length; j++) {
+      const [a, b] = [seats[i].pos, seats[j].pos];
+      min = Math.min(min, Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]));
+    }
+  }
+  return min;
 }
 
 // Horizontal FOV to the vertical FOV that projection.js wants, for a frame with this aspect ratio.
@@ -68,6 +94,6 @@ export function dummySeats(videoUrl = null) {
     cam.position.set(...pos);
     cam.lookAt(target);
     const e = new THREE.Euler().setFromQuaternion(cam.quaternion, "YXZ");
-    return { name, pos, yaw: deg(e.y), pitch: deg(e.x), roll: deg(e.z), fov: 40, fovAxis: "vertical", videoUrl, offsetSeconds };
+    return { name, pos, yaw: deg(e.y), pitch: deg(e.x), roll: deg(e.z), fov: 40, fovAxis: "vertical", aspect: null, videoUrl, offsetSeconds, offsetKnown: true };
   });
 }

@@ -9,3 +9,4 @@ public/concert-test/*
 !public/concert-test/cameras.json
 public/concert/*
 !public/concert/.gitkeep
+frames/
