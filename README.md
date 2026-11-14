@@ -144,7 +144,9 @@ To tune live, use the console in debug mode, for example `projection.update({ fo
 
 For sliders, run `npm run dev` and open `https://localhost:5173/test/projection.html`. It is a fake room where you can add several videos or photos, look through each projector, and copy the poses as JSON. It is not part of `npm run build`.
 
-For concert mode: call `addProjection(scene, clipVideo, stageGlb, { pos, yaw, pitch, roll, fov })` once per seat and show one at a time with `update({ enabled: false })`. Values passed in code win over the URL.
+For concert mode: call `addProjection(scene, clipVideo, stageGlb, { pos, yaw, pitch, roll, fov })` once per seat and show one at a time with `update({ enabled: false })`. Several projections can share the same meshes. Values passed in code win over the URL.
+
+Occlusion is not handled. Seen from the projector's own spot this is invisible, because every surface along a ray shows the same video pixel. From anywhere else, a surface hidden behind furniture still gets a copy of the video, and the furniture does not hide the projection behind it. So keep the viewer at the projector: if you move the projector with `?projPos=`, set `?cam=` to the same place. The console warns when they are more than 5 cm apart.
 
 ## Known gaps
 

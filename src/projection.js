@@ -64,6 +64,7 @@ const POLYGON_OFFSET = -1;            // pulls the overlay toward the viewer so 
 const PATTERN_WIDTH = 1280, PATTERN_HEIGHT = 720, PATTERN_CELL = 80; // test pattern, pixels
 const PATTERN_LABEL_INSET = 0.18;     // labels sit this far in (fraction of the frame), clear of the default edge fade
 const DEBUG_WIRE = { color: 0x00ff88, opacity: 0.35 };                // same look as main.js's collider wireframe
+const OFF_AXIS_WARN_METERS = 0.05;    // warn when the projector sits this far from the viewer (see refresh)
 const OVERLAY_FLAG = "isProjectionOverlay";                           // userData marker on our overlay meshes
 const STASH_KEY = "projectionOriginalMaterial";                       // userData slot for a hidden mesh's own material
 
@@ -192,6 +193,8 @@ export function addProjection(scene, video, surfaces, opts = {}) {
   let ownedTexture = null;            // a texture we created (video or test pattern), disposed by us
   let sourceWidth = 0, sourceHeight = 0;
   let firstFrameUploaded = false;     // video only: has the first frame been pushed to the GPU yet
+  const viewerPos = new THREE.Vector3(); // scratch, so refresh() does not allocate
+  let offAxisWarned = false;
 
   // Recomputes everything derived from params. Runs on a param change or when the source's size
   // becomes known, not every frame. No allocations.
@@ -220,6 +223,18 @@ export function addProjection(scene, video, surfaces, opts = {}) {
     uniforms.ambient.value = p.ambient;
     for (let i = 0; i < overlays.length; i++) overlays[i].renderOrder = p.order;
     helper?.update();
+
+    // Occlusion is not handled: a surface hidden from the projector behind furniture still gets
+    // the video, and the hidden collider does not block the viewer's line of sight. Neither shows
+    // while the viewer stands at the projector (how both modes are meant to be watched), so only
+    // warn when they drift apart, for example ?projPos tuned without moving ?cam too.
+    if (opts.rig && !offAxisWarned) {
+      opts.rig.getWorldPosition(viewerPos);
+      if (viewerPos.distanceTo(cam.position) > OFF_AXIS_WARN_METERS) {
+        console.warn("[projection] the projector is not at the viewer's spot. Occlusion is not handled, so the video can show on surfaces behind objects. Move ?cam to the same place as ?projPos.");
+        offAxisWarned = true;
+      }
+    }
   }
 
   // Per-frame work: hide the projection until the source has a picture, and pick up its size.
