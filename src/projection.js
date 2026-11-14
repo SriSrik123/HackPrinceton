@@ -191,6 +191,7 @@ export function addProjection(scene, video, surfaces, opts = {}) {
 
   let ownedTexture = null;            // a texture we created (video or test pattern), disposed by us
   let sourceWidth = 0, sourceHeight = 0;
+  let firstFrameUploaded = false;     // video only: has the first frame been pushed to the GPU yet
 
   // Recomputes everything derived from params. Runs on a param change or when the source's size
   // becomes known, not every frame. No allocations.
@@ -228,8 +229,15 @@ export function addProjection(scene, video, surfaces, opts = {}) {
     const image = texture.image;
     const width = image ? image.videoWidth || image.width || 0 : 0;
     const height = image ? image.videoHeight || image.height || 0 : 0;
-    const hasPicture = width > 0 && height > 0
-      && (!texture.isVideoTexture || image.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA);
+    const frameReady = !texture.isVideoTexture || image.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
+    // three.js refreshes a video texture only when the video presents a new frame, which a paused
+    // video never does, so the texture would stay black until the user taps Start. Push the first
+    // frame once ourselves: the first frame then shows before the tap, without calling play().
+    if (texture.isVideoTexture && frameReady && !firstFrameUploaded) {
+      texture.needsUpdate = true;
+      firstFrameUploaded = true;
+    }
+    const hasPicture = width > 0 && height > 0 && frameReady;
     material.visible = params.enabled && hasPicture;
     if (width !== sourceWidth || height !== sourceHeight) {
       sourceWidth = width;
@@ -271,6 +279,7 @@ export function addProjection(scene, video, surfaces, opts = {}) {
     }
     uniforms.map.value = texture;
     api.texture = texture;
+    firstFrameUploaded = false;
     update();
   }
 
