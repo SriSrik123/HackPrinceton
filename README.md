@@ -45,6 +45,30 @@ Video rules from the Marble docs: mp4, webm, mov or avi, max 100 MB. To shrink a
 ffmpeg -i party.mov -vf scale=-2:720 -c:v libx264 -crf 26 -c:a aac -b:a 128k party_720.mp4
 ```
 
+### Or from the upload page (KAN-15)
+
+Same Marble run, started from a page instead of the terminal:
+
+```bash
+export WLT_API_KEY=your_key_here
+npm run upload-server        # keeps the key on this computer, listens on 127.0.0.1:8787
+npm run dev                  # in a second terminal, then open https://localhost:5173/upload.html
+```
+
+Pick a video, tick the box that says it spends credits and replaces `public/world/`, and press Build. The page shows the real state (uploading to this computer, sending to Marble, building, downloading, ready, or the error). Only one run can go at a time. Set `UPLOAD_PIN=1234` before starting the server if the network is shared, because anyone who can open the dev server page can otherwise start a paid run. The server runs `scripts/marble.mjs`, so the output is identical. Concert mode shows a "prepared example" card only; nothing uploaded is processed for concert mode.
+
+## Concert mode (KAN-14)
+
+A separate page, `https://localhost:5173/concert.html`, reusing the party code (`main.js` is untouched). You stand at one seat (a filming spot), look around, and jump to another seat by looking at its marker for 1.5 s or tapping the Cardboard button while looking at it. Each seat projects its own clip onto the stage from its spot (`src/projection.js`); only the current seat's clip shows. All clips run from one master clock, `clipTime = masterTime - offsetSeconds` (`src/masterClock.js`), so the music keeps going when you jump.
+
+With no data it shows a dummy scene: three seats, a flat stage panel, and fake clips that draw their own clip time (so you can see the offsets). Real data goes in `public/concert/`:
+
+- `cameras.json`: seats, see the comment at the top of `src/seats.js` for the accepted shape (quaternion order, `axes`, `fovAxis`, offsets).
+- `stage.glb`: the invisible stage panel (and floor) the clips are projected onto.
+- `venue.spz`: the venue splat that fills in around the projection.
+
+URL options: `?seat=2`, `?t=30` (start master time), `?video=/world/source.mp4` (use one real video for every dummy seat), `?dwell=1.5`, `?autoplay=1`, `?venueFlip=1`, `?debug=1`. Logic tests: `node --test test/concert.test.mjs`.
+
 ## 2. Run the viewer
 
 ```bash

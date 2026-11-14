@@ -1,0 +1,408 @@
+// Concert mode (KAN-14): stand at one of the seats where fans filmed, look around, and jump to
+// another seat by looking at its marker. Each seat shows its own clip, projected onto the stage
+// from that seat's spot. All clips play from one master clock (src/masterClock.js).
+//
+// Data (all optional while the venue is being built; the page falls back to a dummy scene):
+//   public/concert/cameras.json   seats, see src/seats.js
+//   public/concert/stage.glb      invisible stage panel (and floor) the clips are projected onto
+//   public/concert/venue.spz      the venue splat that fills in around the projection
+//
+// URL options: ?seat=N start seat (1-based) · ?t=SECONDS start master time · ?video=URL use one real
+// video for every dummy seat · ?dwell=1.5 gaze seconds · ?autoplay=1 start the clock on load ·
+// ?venueFlip=1 rotate the venue splat 180 degrees around X · ?debug=1 stage wireframe + frustums + readout.
+// Per-projection options from src/projection.js (?projFov=...) also apply to every seat.
+
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { VRButton } from "three/addons/webxr/VRButton.js";
+import { StereoEffect } from "three/addons/effects/StereoEffect.js";
+import { LookControls } from "./lookControls.js";
+import { addProjection } from "./projection.js";
+import { MasterClock, clipTime, planClip } from "./masterClock.js";
+import { parseSeats, dummySeats, verticalFov } from "./seats.js";
+
+const DATA_DIR = "./concert/";
+const params = new URLSearchParams(location.search);
+const num = (key, fallback) => (params.has(key) && Number.isFinite(Number(params.get(key))) ? Number(params.get(key)) : fallback);
+const opt = {
+  seat: num("seat", 1) - 1,
+  t: num("t", 0),
+  dwell: num("dwell", 1.5),
+  video: params.get("video"),
+  autoplay: params.get("autoplay") === "1",
+  venueFlip: params.get("venueFlip") === "1",
+  debug: params.get("debug") === "1",
+};
+const COOLDOWN = 1.0; // seconds after a jump before the next gaze selection can fire
+
+const statusEl = document.getElementById("status");
+const setStatus = (msg) => { statusEl.textContent = msg; };
+
+// ---------------------------------------------------------------------------
+// Renderer, scene, camera, rig (same setup as the party viewer)
+// ---------------------------------------------------------------------------
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.xr.enabled = true;
+renderer.xr.setReferenceSpaceType("local");
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x07070b);
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 1000);
+const rig = new THREE.Group(); // the viewer's seat: moved on every jump
+rig.add(camera);
+scene.add(rig);
+
+const look = new LookControls(camera, rig, renderer.domElement);
+const clock = new MasterClock();
+let stereo = null;
+
+// ---------------------------------------------------------------------------
+// Clips: what a seat plays. A real video, or a fake clip that draws its own clip time.
+// ---------------------------------------------------------------------------
+class VideoClip {
+  constructor(url) {
+    const v = document.createElement("video");
+    v.src = url;
+    v.crossOrigin = "anonymous";
+    v.playsInline = true;
+    v.preload = "auto";
+    v.muted = true;
+    this.video = v;
+    this.source = v;
+  }
+  get duration() { return this.video.duration; }
+  prime() { this.video.play().catch(() => {}); } // inside a tap, so iOS lets this element play later
+  // Returns "before" | "playing" | "after". Only the active seat's clip ever plays (and has sound).
+  sync(t, playing, active) {
+    const v = this.video;
+    v.muted = !active;
+    const plan = planClip({ clipTime: t, duration: v.duration, videoTime: v.currentTime });
+    if (!active || plan.state !== "playing") {
+      if (!v.paused) v.pause();
+      return plan.state;
+    }
+    if (plan.seekTo !== null) v.currentTime = plan.seekTo;
+    if (playing && v.paused) v.play().catch(() => {});
+    else if (!playing && !v.paused) v.pause();
+    return "playing";
+  }
+}
+
+// Stand-in for a clip while there is no footage: shows the seat name and its own clip time, so the
+// master clock and offsets can be seen working.
+class FakeClip {
+  constructor(label, hue) {
+    this.label = label;
+    this.hue = hue;
+    this.canvas = Object.assign(document.createElement("canvas"), { width: 1280, height: 720 });
+    this.source = new THREE.CanvasTexture(this.canvas);
+    this.lastTenth = NaN;
+  }
+  prime() {}
+  sync(t) {
+    if (t < 0) return "before";
+    const tenth = Math.floor(t * 10);
+    if (tenth !== this.lastTenth) {
+      this.lastTenth = tenth;
+      const g = this.canvas.getContext("2d");
+      g.fillStyle = `hsl(${this.hue} 55% 28%)`;
+      g.fillRect(0, 0, 1280, 720);
+      g.strokeStyle = "#fff4";
+      g.lineWidth = 2;
+      for (let x = 0; x <= 1280; x += 80) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, 720); g.stroke(); }
+      for (let y = 0; y <= 720; y += 80) { g.beginPath(); g.moveTo(0, y); g.lineTo(1280, y); g.stroke(); }
+      g.fillStyle = "#fff";
+      g.textAlign = "center";
+      g.font = "bold 150px sans-serif";
+      g.fillText(this.label, 640, 300);
+      g.font = "bold 110px monospace";
+      g.fillText(`clip ${t.toFixed(1)} s`, 640, 460);
+      g.fillStyle = "#ffd84a"; // a bar that sweeps once every 10 clip seconds
+      g.fillRect(((t % 10) / 10) * 1180, 560, 100, 60);
+      this.source.needsUpdate = true;
+    }
+    return "playing";
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Loading: seats, stage surfaces, venue splat
+// ---------------------------------------------------------------------------
+const isHtml = (res) => (res.headers.get("content-type") || "").includes("html"); // dev server answers unknown paths with index.html
+
+async function loadSeats() {
+  try {
+    const res = await fetch(DATA_DIR + "cameras.json", { headers: { Accept: "application/json" } });
+    if (!res.ok || isHtml(res)) return { seats: dummySeats(opt.video), dummy: true };
+    return { seats: parseSeats(await res.json()), dummy: false };
+  } catch (e) {
+    if (e instanceof SyntaxError || /Seat|cameras\.json/.test(e.message)) throw e; // a broken file should be loud
+    return { seats: dummySeats(opt.video), dummy: true };
+  }
+}
+
+// The stage panel the clips are projected onto. Hidden unless ?debug=1; projection.js makes the
+// hidden meshes catch the video.
+async function loadStage(dummy) {
+  if (!dummy) {
+    try {
+      const gltf = await new GLTFLoader().loadAsync(DATA_DIR + "stage.glb");
+      gltf.scene.traverse((o) => { if (o.isMesh) o.visible = false; });
+      scene.add(gltf.scene);
+      return gltf.scene;
+    } catch (e) {
+      console.warn("[concert] stage.glb missing or failed to load; using a flat stand-in panel", e);
+    }
+  }
+  const group = new THREE.Group();
+  const panel = new THREE.Mesh(new THREE.PlaneGeometry(8, 4.5), new THREE.MeshBasicMaterial());
+  panel.position.set(0, 2.25, -8);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(14, 14), new THREE.MeshBasicMaterial());
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.set(0, 0, -3);
+  group.add(panel, floor);
+  group.children.forEach((m) => {
+    if (opt.debug) { m.material = new THREE.MeshBasicMaterial({ color: 0x00ff88, wireframe: true, transparent: true, opacity: 0.3 }); }
+    else m.visible = false;
+  });
+  scene.add(group);
+  // something to look at around the stage so the dummy scene is not a black void
+  const grid = new THREE.GridHelper(14, 14, 0x445, 0x223);
+  grid.position.set(0, 0.01, -3);
+  scene.add(grid);
+  [[-5, 0.5, -6], [5, 0.5, -6], [-6, 0.5, 2], [6, 0.5, 2], [0, 0.5, 5]].forEach(([x, y, z], i) => {
+    const box = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: new THREE.Color().setHSL(i / 5, 0.4, 0.3) }));
+    box.position.set(x, y, z);
+    scene.add(box);
+  });
+  return group;
+}
+
+// The venue splat, if public/concert/venue.spz exists. Its coordinate frame is not known yet
+// (splatfacto output after dataparser_transforms.json), so ?venueFlip=1 is there if it is upside down.
+async function loadVenue() {
+  try {
+    const head = await fetch(DATA_DIR + "venue.spz", { method: "HEAD" });
+    if (!head.ok || isHtml(head)) return null;
+    const { SparkRenderer, SplatMesh } = await import("@sparkjsdev/spark");
+    scene.add(new SparkRenderer({ renderer }));
+    const splat = new SplatMesh({ url: DATA_DIR + "venue.spz" });
+    if (opt.venueFlip) splat.quaternion.set(1, 0, 0, 0);
+    scene.add(splat);
+    await splat.initialized;
+    return splat;
+  } catch (e) {
+    console.warn("[concert] venue.spz failed to load; continuing without it", e);
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Seats: one projection and one marker per seat
+// ---------------------------------------------------------------------------
+let seats = [];
+let current = 0;
+let stageSurfaces = null;
+
+function makeLabel(text) {
+  const canvas = Object.assign(document.createElement("canvas"), { width: 256, height: 64 });
+  const g = canvas.getContext("2d");
+  g.font = "bold 34px sans-serif";
+  g.textAlign = "center";
+  g.fillStyle = "#fff";
+  g.shadowColor = "#000";
+  g.shadowBlur = 6;
+  g.fillText(text, 128, 44);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), transparent: true }));
+  sprite.scale.set(1.2, 0.3, 1);
+  sprite.position.y = 0.55;
+  return sprite;
+}
+
+function buildSeat(data, index) {
+  const clip = opt.video || data.videoUrl ? new VideoClip(data.videoUrl ?? opt.video) : new FakeClip(data.name, (index * 110 + 200) % 360);
+  const projection = addProjection(scene, clip.source, stageSurfaces, {
+    pos: data.pos, yaw: data.yaw, pitch: data.pitch, roll: data.roll, fov: data.fovAxis === "horizontal" ? verticalFov(data.fov, 16 / 9) : data.fov,
+    enabled: false, order: index + 1, debug: opt.debug && index === 0, // one frustum helper is enough
+  });
+  // A horizontal FOV can only be converted once the real frame size is known.
+  if (data.fovAxis === "horizontal" && clip.video) {
+    clip.video.addEventListener("loadedmetadata", () => {
+      projection.update({ fov: verticalFov(data.fov, clip.video.videoWidth / clip.video.videoHeight) });
+    }, { once: true });
+  }
+
+  const marker = new THREE.Group();
+  marker.position.set(...data.pos);
+  const orb = new THREE.Mesh(new THREE.SphereGeometry(0.22, 24, 16), new THREE.MeshBasicMaterial({ color: 0x4fd1ff }));
+  const fill = new THREE.Mesh(new THREE.CircleGeometry(0.42, 40), new THREE.MeshBasicMaterial({ color: 0xffd84a, transparent: true, opacity: 0.85, depthTest: false }));
+  fill.scale.setScalar(0.001); // grows while you look at the marker
+  fill.renderOrder = 999;
+  const hit = new THREE.Mesh(new THREE.SphereGeometry(0.7, 12, 8), new THREE.MeshBasicMaterial({ visible: false })); // forgiving gaze target
+  marker.add(orb, fill, hit, makeLabel(data.name));
+  scene.add(marker);
+
+  return { data, clip, projection, marker, fill, hit, shown: false };
+}
+
+function selectSeat(i) {
+  if (i === current && rig.userData.placed) return;
+  current = i;
+  const s = seats[i].data;
+  rig.userData.placed = true;
+  rig.position.set(...s.pos);
+  look.baseYaw = THREE.MathUtils.degToRad(s.yaw); // face the stage the way the filming phone did
+  look.yaw = 0;
+  look.pitch = 0;
+  look.recenter();
+  rig.rotation.y = look.baseYaw;
+  gaze.target = null;
+  gaze.t = 0;
+  gaze.cooldown = COOLDOWN;
+  seats.forEach((seat, k) => { seat.marker.visible = k !== i; });
+  document.querySelectorAll("#seats button").forEach((b, k) => b.classList.toggle("current", k === i));
+}
+
+// ---------------------------------------------------------------------------
+// Gaze: look at a marker for `dwell` seconds, or tap while looking at it, to jump there
+// ---------------------------------------------------------------------------
+const gaze = { target: null, t: 0, cooldown: 0, ray: new THREE.Raycaster(), center: new THREE.Vector2(0, 0) };
+const camPos = new THREE.Vector3();
+
+function updateGaze(dt) {
+  gaze.cooldown = Math.max(0, gaze.cooldown - dt);
+  gaze.ray.setFromCamera(gaze.center, camera);
+  const candidates = seats.filter((s, k) => k !== current).map((s) => s.hit);
+  const hit = gaze.ray.intersectObjects(candidates, false)[0];
+  const target = hit ? seats.findIndex((s) => s.hit === hit.object) : null;
+  if (target !== gaze.target) { gaze.target = target; gaze.t = 0; }
+  if (target !== null && gaze.cooldown === 0) {
+    gaze.t += dt;
+    if (gaze.t >= opt.dwell) { selectSeat(target); return; }
+  }
+  camera.getWorldPosition(camPos);
+  seats.forEach((s, k) => {
+    s.fill.scale.setScalar(k === gaze.target && gaze.cooldown === 0 ? Math.max(0.001, gaze.t / opt.dwell) : 0.001);
+    s.fill.lookAt(camPos); // the disc always faces the viewer
+  });
+}
+
+// ---------------------------------------------------------------------------
+// UI: desktop drag, Android WebXR, Cardboard fallback (StereoEffect + gyro)
+// ---------------------------------------------------------------------------
+function startPlayback() {
+  seats.forEach((s) => s.clip.prime());
+  clock.play();
+}
+
+async function startCardboard() {
+  try { await look.enableGyro(); } catch (e) { setStatus(e.message); return; }
+  stereo = new StereoEffect(renderer);
+  stereo.setEyeSeparation(0.064);
+  stereo.setSize(window.innerWidth, window.innerHeight);
+  document.body.classList.add("cardboard");
+  document.documentElement.requestFullscreen?.().catch(() => {});
+  screen.orientation?.lock?.("landscape").catch(() => {});
+  startPlayback();
+  setStatus("");
+}
+
+function exitCardboard() {
+  stereo = null;
+  renderer.setScissorTest(false);
+  renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
+  document.body.classList.remove("cardboard");
+  document.exitFullscreen?.().catch(() => {});
+}
+
+function setupUi() {
+  document.getElementById("btn-start").onclick = () => { startPlayback(); document.getElementById("btn-start").remove(); };
+  document.getElementById("btn-cardboard").onclick = startCardboard;
+  document.getElementById("btn-exit").onclick = exitCardboard;
+  // A tap (the Cardboard button) selects the marker you are looking at; otherwise it recenters.
+  renderer.domElement.addEventListener("click", () => {
+    if (gaze.target !== null && gaze.cooldown === 0) selectSeat(gaze.target);
+    else if (stereo) look.recenter();
+  });
+  const vrButton = VRButton.createButton(renderer);
+  vrButton.id = "VRButton";
+  document.body.appendChild(vrButton);
+  renderer.xr.addEventListener("sessionstart", () => { startPlayback(); exitCardboard(); });
+}
+
+window.addEventListener("resize", () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  if (stereo) stereo.setSize(window.innerWidth, window.innerHeight);
+  else renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ---------------------------------------------------------------------------
+// Frame loop
+// ---------------------------------------------------------------------------
+let last = performance.now();
+renderer.setAnimationLoop(() => {
+  const now = performance.now();
+  const dt = Math.min(0.1, (now - last) / 1000);
+  last = now;
+  if (!renderer.xr.isPresenting) look.update();
+  if (!seats.length) { renderer.render(scene, camera); return; }
+
+  const master = clock.time();
+  seats.forEach((s, k) => {
+    const active = k === current;
+    const state = s.clip.sync(clipTime(master, s.data.offsetSeconds), clock.playing, active);
+    const show = active && state === "playing"; // one projection at a time, so moving people never appear twice
+    if (show !== s.shown) { s.shown = show; s.projection.update({ enabled: show }); }
+    s.projection.update(dt);
+  });
+  updateGaze(dt);
+
+  const cur = seats[current];
+  const ct = clipTime(master, cur.data.offsetSeconds);
+  statusEl.textContent = `${cur.data.name} (seat ${current + 1} of ${seats.length})\n`
+    + (clock.playing ? "" : "Paused. Tap Start.\n")
+    + `master ${master.toFixed(1)} s · clip ${ct.toFixed(1)} s${ct < 0 ? " (not started yet)" : ""}`
+    + (opt.debug ? `\ngaze ${gaze.target === null ? "-" : seats[gaze.target].data.name} ${gaze.t.toFixed(2)} s` : "");
+
+  if (stereo && !renderer.xr.isPresenting) stereo.render(scene, camera);
+  else renderer.render(scene, camera);
+});
+
+// ---------------------------------------------------------------------------
+// Boot
+// ---------------------------------------------------------------------------
+async function main() {
+  setupUi();
+  let loaded;
+  try {
+    loaded = await loadSeats();
+  } catch (e) {
+    setStatus("cameras.json problem: " + e.message);
+    return;
+  }
+  setStatus(loaded.dummy ? "No public/concert/cameras.json yet: showing the dummy scene." : "Loading the venue...");
+  stageSurfaces = await loadStage(loaded.dummy);
+  await loadVenue();
+
+  seats = loaded.seats.map(buildSeat);
+  const seatList = document.getElementById("seats"); // desktop shortcuts; in the Cardboard you look at markers instead
+  seats.forEach((s, i) => {
+    const b = document.createElement("button");
+    b.textContent = s.data.name;
+    b.onclick = () => selectSeat(i);
+    seatList.appendChild(b);
+  });
+
+  clock.seek(opt.t);
+  selectSeat(Math.min(Math.max(opt.seat, 0), seats.length - 1));
+  if (opt.autoplay) { clock.play(); document.getElementById("btn-start")?.remove(); }
+
+  // handy in the browser console, and for tests
+  Object.assign(window, { THREE, scene, camera, rig, look, clock, seats: () => seats, selectSeat, gaze, current: () => current });
+}
+
+main();

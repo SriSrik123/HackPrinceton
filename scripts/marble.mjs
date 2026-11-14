@@ -18,7 +18,9 @@ import { fileURLToPath } from "node:url";
 
 const API = (process.env.WLT_API_BASE || "https://api.worldlabs.ai") + "/marble/v1"; // base override is only for local testing
 const KEY = process.env.WLT_API_KEY;
-const OUT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../public/world");
+const OUT_DIR = process.env.WLT_OUT_DIR // override is only for local testing
+  ? path.resolve(process.env.WLT_OUT_DIR)
+  : path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../public/world");
 const MAX_BYTES = 100 * 1024 * 1024; // generate docs: "Maximum video size: 100MB"
 const POLL_MS = Number(process.env.WLT_POLL_MS || 10_000);
 const MIME = { mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm", avi: "video/x-msvideo" };
