@@ -10,7 +10,7 @@
 //
 // URL options: ?data=concert-test read another folder of public/ · ?seat=N start seat (1-based) ·
 // ?t=SECONDS start master time · ?video=URL use one real video for every seat without one ·
-// ?reveal=0 skips the video-only intro (default: only the video rectangle shows until the first tap after Start, then the venue fades in) · ?dwell=1.5 gaze seconds · ?autoplay=1 start the clock on load · ?venueFlip=1 rotate venue, stage and
+// ?reveal=0 skips the video-only intro (default: only the video rectangle shows until the first tap after Start, then the venue builds outward from the frame in cubes) · ?revealTime=3 seconds the cubes take to reach the far end · ?cube= cube size (scene units, default venue size / 40) · ?dwell=1.5 gaze seconds · ?autoplay=1 start the clock on load · ?venueFlip=1 rotate venue, stage and
 // seats together 180 degrees around X · ?panelDist=1 stand-in panel distance (scene units) ·
 // ?markerScale= seat marker size (default from the seat spacing) · ?debug=1 wireframes + frustum + readout.
 // Per-projection options from src/projection.js (?projFov=...) also apply to every seat.
@@ -34,6 +34,8 @@ const opt = {
   t: num("t", 0),
   dwell: num("dwell", 0), // opt in; Cardboard defaults to explicit screen taps
   reveal: num("reveal", 1), // 0 = show the venue right away; otherwise the video shows alone until the first tap after Start
+  revealTime: num("revealTime", 3),
+  cube: num("cube", null),
   video: params.get("video"),
   autoplay: params.get("autoplay") === "1",
   venueFlip: params.get("venueFlip") === "1",
@@ -43,10 +45,14 @@ const opt = {
 };
 const rad = THREE.MathUtils.degToRad;
 let markerScale = 1;
-const REVEAL_FADE = 1.5; // seconds the venue and markers take to fade in
 let venue = null;
+let cubeReveal = null;
 let revealT = opt.reveal > 0 ? null : Infinity; // null until the reveal tap, then seconds since it
-const beginReveal = () => { if (revealT === null && clock.playing) revealT = 0; };
+const beginReveal = () => {
+  if (revealT !== null || !clock.playing) return;
+  revealT = 0;
+  cubeReveal?.start(frameCenter(), opt.revealTime);
+};
 const COOLDOWN = 1.0; // seconds after a jump before the next gaze selection can fire
 
 const statusEl = document.getElementById("status");
@@ -241,7 +247,8 @@ function seatPanel(data) {
 function buildSeat(data, index) {
   const url = data.videoUrl ?? opt.video;
   const clip = url ? new VideoClip(url) : new FakeClip(data.name, (index * 110 + 200) % 360, data.aspect ?? 16 / 9);
-  const projection = addProjection(scene, clip.source, stageSurfaces ?? [seatPanel(data)], {
+  const surfaces = stageSurfaces ?? [seatPanel(data)];
+  const projection = addProjection(scene, clip.source, surfaces, {
     pos: data.pos, yaw: data.yaw, pitch: data.pitch, roll: data.roll, fov: seatVerticalFov(data),
     near: Math.min(0.1, opt.panelDist / 10),
     enabled: false, order: index + 1, debug: opt.debug && index === 0, // one frustum helper is enough
@@ -264,7 +271,16 @@ function buildSeat(data, index) {
   marker.add(orb, fill, hit, makeLabel(data.name));
   scene.add(marker);
 
-  return { data, clip, projection, marker, fill, hit, shown: false };
+  return { data, clip, projection, surfaces, marker, fill, hit, shown: false };
+}
+
+// Where the current seat's video lands: its forward ray hits the projection surfaces (fallback: panelDist ahead).
+function frameCenter() {
+  const { data, surfaces } = seats[current];
+  const origin = new THREE.Vector3(...data.pos);
+  const dir = new THREE.Vector3(0, 0, -1).applyEuler(new THREE.Euler(rad(data.pitch), rad(data.yaw), rad(data.roll), "YXZ"));
+  const hit = new THREE.Raycaster(origin, dir).intersectObjects(surfaces, true)[0];
+  return hit ? hit.point : origin.addScaledVector(dir, opt.panelDist);
 }
 
 function placeSeat(i, master = clock.time()) {
@@ -399,9 +415,8 @@ renderer.setAnimationLoop(() => {
   if (!renderer.xr.isPresenting) look.update();
   if (!seats.length) { renderer.render(scene, camera); return; }
 
-  if (revealT !== null) revealT += dt;
-  const revealK = revealT === null ? 0 : THREE.MathUtils.clamp(revealT / REVEAL_FADE, 0, 1);
-  if (venue) venue.opacity = revealK;
+  if (revealT !== null) { revealT += dt; cubeReveal?.update(revealT); }
+  const revealed = revealT !== null;
 
   const master = clock.time();
   let curState = null;
@@ -418,8 +433,8 @@ renderer.setAnimationLoop(() => {
   const cv = seats[current].clip.video;
   if (leaving >= 0 && (curState === "after" || curState === "error"
     || (curState === "playing" && (!cv || (!cv.seeking && cv.readyState >= 3))))) leaving = -1;
-  seats.forEach((s, k) => { s.marker.visible = k !== current && revealK > 0; });
-  if (revealK > 0) updateGaze(dt); // no jumping while only the video is showing
+  seats.forEach((s, k) => { s.marker.visible = k !== current && revealed; });
+  if (revealed) updateGaze(dt); // no jumping while only the video is showing
 
   const cur = seats[current];
   const ct = clipTime(master, cur.data.offsetSeconds);
@@ -453,7 +468,10 @@ async function main() {
     setStatus("Production assets missing or invalid: stage.glb and venue.spz are required in public/concert/.");
     return;
   }
-  if (venue && opt.reveal > 0) venue.opacity = 0;
+  if (venue && opt.reveal > 0) {
+    try { const { CubeReveal } = await import("./cubeReveal.js"); cubeReveal = new CubeReveal(scene, venue, opt.cube); }
+    catch (e) { console.warn("[concert] cube reveal failed; showing the venue as is", e); }
+  }
 
   // Markers are sized for seats a few meters apart; shrink them for close seats or normalized units.
   markerScale = opt.markerScale ?? Math.min(1, (seatSpacing(loaded.seats) * 0.3) / 0.7);
@@ -471,7 +489,7 @@ async function main() {
   if (opt.autoplay) { clock.play(); document.getElementById("btn-start")?.remove(); }
 
   // handy in the browser console, and for tests
-  Object.assign(window, { THREE, scene, camera, rig, look, clock, seats: () => seats, selectSeat, gaze, current: () => current });
+  Object.assign(window, { THREE, scene, camera, rig, look, clock, seats: () => seats, selectSeat, gaze, current: () => current, cubeReveal: () => cubeReveal });
 }
 
 main();
