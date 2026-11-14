@@ -5,7 +5,8 @@ Turns an old party video into a Marble 3D room and shows it on a phone in a Goog
 ```
 scripts/marble.mjs     upload video to Marble, wait, download splats + collider
 src/main.js            three.js + Spark viewer, WebXR button, Cardboard fallback
-src/projection.js      addProjection() stub, Mac 2 drops the projector in here
+src/projection.js      addProjection(): projects the video onto the room (see Projection below)
+test/projection.html   projection test bench: fake room, sliders, several sources (dev server only)
 src/lookControls.js    gyro look (iPhone/Cardboard fallback) and drag-to-look on desktop
 src/config.js          start position, splat size, flip toggles (all overridable from the URL)
 public/world/          where the script saves the world (the page reads from here)
@@ -81,14 +82,51 @@ Open the `https://….trycloudflare.com` link it prints on the phone. That one h
 
 If it stutters, add `?splat=100k`.
 
-## For Mac 2: the projection hook
+## Projection
 
-`src/projection.js` exports `addProjection(scene, video, surfaces, opts)`. `main.js` calls it once after everything loads and calls the returned `update(dt)` every frame. The comment at the top of that file lists exactly what you get (the hidden collider meshes, the video element, the camera, the rig at the camera spot). Replace the stub body; nothing else needs to change.
+`src/projection.js` plays the original video back onto the room from the original camera's spot, like a slide projector. Each point of `collider.glb` looks up where it falls in the projector's view: inside the frame it shows that video pixel, outside it the splat shows through, and the frame's edges fade out. `main.js` calls `addProjection(scene, video, surfaces, opts)` once and `update(dt)` every frame. The file never starts the video itself.
+
+It also covers the cases where something is missing:
+
+- No `collider.glb`: it projects onto a stand-in box room (floor, ceiling, three walls) built around the projector. Good enough to see the video, but it will not match the real room.
+- No `"video"` in `world.json`: it shows a test pattern (grid, red crosshair, TOP / BOTTOM / LEFT / RIGHT) so you can still line things up.
+- The collider meshes stay invisible. With `?debug=1` you also get their wireframe, the projector's frustum, and `projection` in the browser console.
+
+URL options (no rebuild needed). Every param in `DEFAULTS` at the top of `src/projection.js` has one: `proj` plus the param name.
+
+| Option | Default | What it does |
+| --- | --- | --- |
+| `?projPos=x,y,z` | the rig (camera spot) | Projector position, meters, world space |
+| `?projYaw=` | the rig's yaw (`?yaw=`) | Degrees. Plus turns left |
+| `?projPitch=` | 0 | Degrees. Plus looks up |
+| `?projRoll=` | 0 | Degrees. Plus tilts counter-clockwise |
+| `?projFov=` | 50 | Vertical field of view, degrees. Landscape phone video is about 40 to 50, portrait about 65 |
+| `?projFade=` | 0.12 | Soft edge width, as a fraction of the frame. 0 is a hard edge |
+| `?projOpacity=` | 1 | 0 to 1 |
+| `?projBrightness=`, `?projSaturation=`, `?projTint=ffcc88` | 1, 1, ffffff | Color match the video to the splat |
+| `?projShading=`, `?projAmbient=` | 0.6, 0.35 | How much surfaces facing away from the projector darken, and the darkest they get |
+| `?projEnabled=0` | 1 | Hide the projection |
+| `?projRoomSize=w,h,d`, `?projRoomEye=`, `?projRoomBehind=` | 4,2.6,5 / 1.4 / 0.1 | Stand-in room size, projector height above its floor, floor behind the projector (meters) |
+
+How to line it up:
+
+1. Open with `?debug=1` and do the three checks in section 2 first (room upright, wireframe on the splat, standing at the camera's spot). The projector starts at the same spot and yaw as the viewer.
+2. Set `?projFov=` first. Too small and the video's walls look narrower than the room's, too big and they look wider. The value is a guess until tuned: the real camera's field of view is not known.
+3. Then `?projYaw=`, `?projPitch=` and `?projRoll=` until the video's corners and edges sit on the room's.
+4. Only touch `?projPos=` if nearby objects are still off after that.
+5. Match colors with `?projBrightness=`, `?projSaturation=` and `?projTint=`, and widen `?projFade=` until the frame's border disappears.
+
+To tune live, use the console in debug mode, for example `projection.update({ fov: 44, yaw: 3 })`, then copy the values that work into the URL. `projection.params` shows the current values.
+
+For sliders, run `npm run dev` and open `https://localhost:5173/test/projection.html`. It is a fake room where you can add several videos or photos, look through each projector, and copy the poses as JSON. It is not part of `npm run build`.
+
+For concert mode: call `addProjection(scene, clipVideo, stageGlb, { pos, yaw, pitch, roll, fov })` once per seat and show one at a time with `update({ enabled: false })`. Values passed in code win over the URL.
 
 ## Known gaps
 
 - Not run against the real Marble API or on a real phone yet. See the notes in the thread.
 - The Cardboard fallback has no lens distortion correction, so edges look a bit warped through the lenses.
+- The projection is tested on desktop Chrome with stand-in data only (a fake splat, a test video, a hand-made collider). Not tested yet: a real Marble room, WebXR, or a phone.
 - The collider GLB's axis convention isn't documented. Use `?debug=1` to check it.
 - The "origin = original camera spot" assumption isn't documented by World Labs either. Check it with `?debug=1`.
 - `npm install` fails inside a folder that doesn't allow symlinks (some synced or network drives). Copy the folder somewhere local first.
