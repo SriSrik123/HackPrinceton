@@ -1,6 +1,6 @@
-# Party mode starter
+# Rewind
 
-Turns an old party video into a Marble 3D room and shows it on a phone in a Google Cardboard. The viewer stands where the original camera was and can only turn their head.
+A 3D replay app with two modes. **Party mode** turns an old party video into a Marble 3D room and shows it on a phone in a Google Cardboard. The viewer stands where the original camera was and can only turn their head.
 
 ```
 scripts/marble.mjs     upload video to Marble, wait, download splats + collider
@@ -10,6 +10,8 @@ test/projection.html   projection test bench: fake room, sliders, several source
 src/concert.js         concert mode viewer (seats, gaze jump, master clock); seats.js, masterClock.js
 scripts/extract-frames.mjs  concert clips -> frames for COLMAP, with timestamps
 scripts/export-cameras.mjs  splatfacto run -> cameras.json (Neven)
+scripts/sync_clips.py       audio sync of concert clips -> offsets.json (Dave)
+scripts/merge-offsets.mjs   copies those offsets into cameras.json
 src/lookControls.js    gyro look (iPhone/Cardboard fallback) and drag-to-look on desktop
 src/config.js          start position, splat size, flip toggles (all overridable from the URL)
 public/world/          where the script saves the world (the page reads from here)
@@ -171,3 +173,11 @@ Occlusion is not handled. Seen from the projector's own spot this is invisible, 
 - The collider GLB's axis convention isn't documented. Use `?debug=1` to check it.
 - The "origin = original camera spot" assumption isn't documented by World Labs either. Check it with `?debug=1`.
 - `npm install` fails inside a folder that doesn't allow symlinks (some synced or network drives). Copy the folder somewhere local first.
+
+## Credits
+
+Built at HackPrinceton 2026.
+
+- Sri: room and Cardboard view (party mode)
+- Dave (David Densmore): concert clip audio sync (`scripts/sync_clips.py`, KAN-12)
+- Neven: concert venue and `cameras.json` export
