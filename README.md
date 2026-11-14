@@ -179,5 +179,6 @@ Occlusion is not handled. Seen from the projector's own spot this is invisible, 
 Built at HackPrinceton 2026.
 
 - Sri: room and Cardboard view (party mode)
-- Dave (David Densmore): concert clip audio sync (`scripts/sync_clips.py`, KAN-12)
+- Soham Deshmukh: video projection (KAN-10), occlusion with several projections (KAN-18), concert viewer and seat transitions
+- Dave (David Densmore): concert clip audio sync (`scripts/sync_clips.py`, KAN-12), and came up with the name Rewind
 - Neven: concert venue and `cameras.json` export
