@@ -1,0 +1,29 @@
+{
+  "world_id": "d29cf3df-00cf-49a9-bea0-1fb9066beb48",
+  "display_name": "Baby living room (empty)",
+  "world_marble_url": "https://marble.worldlabs.ai/world/d29cf3df-00cf-49a9-bea0-1fb9066beb48",
+  "caption": "The scene is a bright, cozy living room, rendered in a realistic photographic style, exuding a serene and inviting atmosphere. The room is bathed in soft, natural daylight, creating a warm and airy ambiance. A tall window, featuring white-framed panes, dominates one wall, allowing ample light to flood the space. Long, sheer white curtains gracefully frame the window, diffusing the sunlight and enhancing the room's gentle glow. Directly in front of this window, a white macrame hammock swing hangs from the ceiling, offering a comfortable and stylish seating option. The floor is covered with light oak wood, providing a clean and natural base for the room's furnishings. A round woven jute rug is centrally placed on the wooden floor, adding texture and warmth. The walls are finished with cream plaster, contributing to the room's soft and neutral palette. Low light-wood shelves are positioned against a wall, holding woven baskets, a framed print, and a small potted plant, adding decorative touches and storage. A large potted monstera plant stands in a corner, introducing a vibrant touch of greenery. A wall-mounted television is affixed to another wall, maintaining the room's minimalist aesthetic. A soft beige armchair is situated in a comfortable arrangement, inviting relaxation. ",
+  "semantics_metadata": {
+    "metric_scale_factor": 1.769894003868103,
+    "ground_plane_offset": 1.239227533340454
+  },
+  "spz_keys": [
+    "500k",
+    "100k",
+    "150k",
+    "full_res"
+  ],
+  "video": "source.mp4",
+  "downloaded_at": "2026-11-14T22:57:33.340Z",
+  "cutout": {
+    "at": [
+      0.3,
+      -2.2
+    ],
+    "height": 3.1
+  },
+  "start": [
+    1.0,
+    0
+  ]
+}

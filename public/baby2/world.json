@@ -1,0 +1,27 @@
+{
+  "world_id": "871245cb-3901-4243-a641-abc5836ef831",
+  "display_name": "Baby2 movie theater",
+  "world_marble_url": "https://marble.worldlabs.ai/world/871245cb-3901-4243-a641-abc5836ef831",
+  "caption": "The scene is a classic movie theater interior, rendered in a realistic style, evoking a sense of nostalgic grandeur and quiet anticipation. The overall tone is serene and slightly melancholic, highlighting the empty space awaiting an audience. A large, bright white cinema screen dominates the front wall, perfectly centered and ready for projection. Rows of plush red velvet seats are arranged in a gentle slope, descending from the viewer's perspective towards the screen, each seat unoccupied and pristine. Dark red velvet curtains, richly draped and gathered, frame both sides of the screen, extending from the ceiling to the floor and adding a touch of theatrical elegance. Dim, warm-toned wall sconces are strategically placed along the side walls, casting a soft, inviting glow that contrasts with the darker ceiling. The aisles are carpeted in a deep, muted pattern, providing a soft texture underfoot and absorbing sound. The ceiling above is dark, creating an intimate and focused atmosphere within the auditorium. The cinema screen is the focal point, positioned directly at the front of the room. The rows of red velvet seats are arranged in concentric arcs, all facing the screen. The dark red curtains are symmetrically placed on either side of the screen, creating a proscenium arch effect. The wall sconces are evenly spaced along the side walls, illuminating the pathways. ",
+  "semantics_metadata": {
+    "metric_scale_factor": 1.8566296100616455,
+    "ground_plane_offset": 0.9401789903640747
+  },
+  "spz_keys": [
+    "500k",
+    "100k",
+    "150k",
+    "full_res"
+  ],
+  "video": "source.mp4",
+  "downloaded_at": "2026-11-14T23:55:38.694Z",
+  "projection": {
+    "yaw": 0,
+    "pitch": -3,
+    "roll": 0,
+    "fov": 15.5,
+    "fade": 0.02,
+    "shading": 0,
+    "extend": 0
+  }
+}

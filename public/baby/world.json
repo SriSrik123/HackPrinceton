@@ -1,0 +1,18 @@
+{
+  "world_id": "a459c2ec-eb64-4ad4-9eeb-42c845b14d97",
+  "display_name": "Baby lift",
+  "world_marble_url": "https://marble.worldlabs.ai/world/a459c2ec-eb64-4ad4-9eeb-42c845b14d97",
+  "caption": "The scene is a warmly lit room, captured in a realistic style, emphasizing a cozy and intimate atmosphere. The overall tone is tender and joyful, reflecting a loving interaction in a comfortable home setting. The room features a soft, earthy color palette, with walls in a light cream or off-white hue, creating a serene backdrop. A large window with multiple panes is visible on one side, letting in natural light that gently illuminates the space; sheer white curtains drape elegantly on either side of the window. From the ceiling, a thick, textured white rope hangs down, possibly part of a swing or a decorative element, adding a whimsical touch to the room's design. The floor is likely made of light-colored wood or a similar natural material, contributing to the airy feel. In another part of the room, a wooden frame with a minimalist piece of art hangs on the wall, adding a touch of understated sophistication. A woven basket sits on the floor, suggesting a practical yet aesthetic storage solution. The ceiling is plain and white, receding smoothly into the walls. The window is positioned along one wall, with the curtains extending from the ceiling to the floor. The rope hangs centrally from the ceiling, leading down towards the floor. The art frame is on an adjacent wall, with the woven basket placed beneath it. ",
+  "semantics_metadata": {
+    "metric_scale_factor": 0.8490704894065857,
+    "ground_plane_offset": 1.2290170192718506
+  },
+  "spz_keys": [
+    "500k",
+    "100k",
+    "150k",
+    "full_res"
+  ],
+  "video": "source.mp4",
+  "downloaded_at": "2026-11-14T22:37:29.483Z"
+}
