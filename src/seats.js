@@ -70,6 +70,7 @@ export function parseSeats(json, { flip = false, requireOffsets = false } = {}) 
       pos,
       yaw: deg(e.y), pitch: deg(e.x), roll: deg(e.z),
       fov,
+      panelPitchOffset: Number.isFinite(c.panelPitchOffset) ? THREE.MathUtils.clamp(c.panelPitchOffset, -30, 30) : 0,
       fovAxis: c.fovAxis ?? defaultFovAxis,
       aspect: w > 0 && h > 0 ? w / h : null, // frame shape, when the file gives it (portrait clips are < 1)
       videoUrl: c.videoUrl ?? c.video ?? null,

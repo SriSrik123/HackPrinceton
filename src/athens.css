@@ -1,0 +1,12 @@
+:root{color-scheme:dark;font-family:Inter,system-ui,sans-serif;color:#f6f7fb;background:#080b12}
+*{box-sizing:border-box}body{margin:0;overflow:hidden;touch-action:none}canvas{display:block}
+header{position:fixed;z-index:2;left:28px;top:25px;pointer-events:none;text-shadow:0 2px 12px #000}
+.eyebrow{font-size:10px;letter-spacing:.24em;color:#d2d9ed}h1{font-size:clamp(22px,3vw,36px);font-weight:550;letter-spacing:-.04em;margin:8px 0}header p{font-size:13px;color:#d2d9ed;margin:0}
+#status{position:fixed;top:140px;left:28px;z-index:2;white-space:pre-line;line-height:1.7;font-size:12px;text-shadow:0 1px 8px #000;pointer-events:none}
+#seats,#ui{position:fixed;z-index:2;left:16px;right:16px;display:flex;gap:9px;justify-content:center;flex-wrap:wrap}#seats{bottom:132px}#ui{bottom:77px}
+button{font:inherit;font-size:13px;padding:12px 19px;border:1px solid #ffffff40;border-radius:24px;background:#080b12c9;color:#fff;backdrop-filter:blur(16px);cursor:pointer;transition:background .2s}
+button:hover{background:#233149dd}button:focus-visible{outline:2px solid #b6c9ff;outline-offset:3px}button.current,#btn-start{background:#e7efff;color:#111a2c;border-color:#e7efff}button[hidden]{display:none}
+footer{position:fixed;z-index:2;bottom:22px;left:16px;right:16px;text-align:center;font-size:10px;color:#c0c8d8;text-shadow:0 1px 8px #000;pointer-events:none}
+#VRButton{bottom:12px!important;right:14px!important;left:auto!important;width:150px!important}#btn-exit{display:none;position:fixed;z-index:3;top:12px;right:12px}
+body.cardboard header,body.cardboard footer,body.cardboard #status,body.cardboard #seats,body.cardboard #ui,body.cardboard #VRButton{display:none!important}body.cardboard #btn-exit{display:block}
+@media(max-width:600px){header{left:18px;top:18px}#status{left:18px;top:125px}button{padding:10px 14px}#VRButton{display:none!important}}

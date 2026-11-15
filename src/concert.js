@@ -19,14 +19,18 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { VRButton } from "three/addons/webxr/VRButton.js";
 import { StereoEffect } from "three/addons/effects/StereoEffect.js";
-import { VideoClip } from "./videoClip.js";
+import { VideoClip } from "./videoClip.js?v=3";
 import { SeatTransition } from "./seatTransition.js";
 import { LookControls } from "./lookControls.js";
 import { addProjection } from "./projection.js";
 import { MasterClock, clipTime } from "./masterClock.js";
-import { parseSeats, dummySeats, verticalFov, seatSpacing } from "./seats.js";
+import { parseSeats, dummySeats, verticalFov, seatSpacing } from "./seats.js?v=2";
 
 const params = new URLSearchParams(location.search);
+const polished = document.body.dataset.experience === 'athens';
+if (polished && !params.has('data')) params.set('data', 'athens-marble');
+if (polished && !params.has('reveal')) params.set('reveal', '0');
+if (polished && !params.has('panelDist')) params.set('panelDist', '3');
 const DATA_DIR = /^[\w-]+$/.test(params.get("data") ?? "") ? `./${params.get("data")}/` : "./concert/"; // a folder name only
 const num = (key, fallback) => (params.has(key) && Number.isFinite(Number(params.get(key))) ? Number(params.get(key)) : fallback);
 const opt = {
@@ -120,12 +124,18 @@ class FakeClip {
 // Loading: seats, stage surfaces, venue splat
 // ---------------------------------------------------------------------------
 const isHtml = (res) => (res.headers.get("content-type") || "").includes("html"); // dev server answers unknown paths with index.html
+let venueSpec = null;
+let placementNote = "";
+let loopClips = params.get('loop') === '1';
 
 async function loadSeats() {
   try {
-    const res = await fetch(DATA_DIR + "cameras.json", { headers: { Accept: "application/json" } });
+    const res = await fetch(DATA_DIR + "cameras.json", { cache: "no-store", headers: { Accept: "application/json" } });
     if (!res.ok || isHtml(res)) return { seats: dummySeats(opt.video), dummy: true };
     const data = await res.json();
+    loopClips = params.has('loop') ? params.get('loop') === '1' : data.playback?.loop === true;
+    venueSpec = data.venue ?? null;
+    if (data.coordinateSystem?.space === 'marble-metric-preview') placementNote = 'Approximate manual placement';
     return { seats: parseSeats(data, { flip: opt.venueFlip, requireOffsets: !data.testOnly }), dummy: false, production: !data.testOnly };
   } catch (e) {
     if (e instanceof SyntaxError || /Seat|cameras\.json/.test(e.message)) throw e; // a broken file should be loud
@@ -180,7 +190,9 @@ async function loadStage(dummy) {
 async function loadVenue() {
   try {
     let file = null;
-    for (const name of ["venue.spz", "venue-test.spz"]) {
+    const candidates = venueSpec?.file && /^[\w.-]+\.spz$/.test(venueSpec.file)
+      ? [venueSpec.file] : ["venue.spz", "venue-test.spz"];
+    for (const name of candidates) {
       const head = await fetch(DATA_DIR + name, { method: "HEAD" });
       if (head.ok && !isHtml(head)) { file = name; break; }
     }
@@ -188,8 +200,21 @@ async function loadVenue() {
     const { SparkRenderer, SplatMesh } = await import("@sparkjsdev/spark");
     scene.add(new SparkRenderer({ renderer }));
     const splat = new SplatMesh({ url: DATA_DIR + file });
-    if (opt.venueFlip) splat.quaternion.set(1, 0, 0, 0);
-    scene.add(splat);
+    if (venueSpec?.marble) {
+      const response = await fetch(DATA_DIR + 'world.json');
+      if (!response.ok || isHtml(response)) throw new Error('Missing Marble world.json');
+      const meta = await response.json();
+      const world = new THREE.Group();
+      // Seats are stored in the same metric + axis-flipped preview space.
+      world.rotation.x = opt.venueFlip ? 0 : Math.PI;
+      const metric = new THREE.Group();
+      metric.scale.setScalar(meta.semantics_metadata?.metric_scale_factor ?? 1);
+      metric.position.y = -(meta.semantics_metadata?.ground_plane_offset ?? 0);
+      metric.add(splat); world.add(metric); scene.add(world);
+    } else {
+      if (opt.venueFlip) splat.quaternion.set(1, 0, 0, 0);
+      scene.add(splat);
+    }
     await splat.initialized;
     return splat;
   } catch (e) {
@@ -239,9 +264,10 @@ function seatPanel(data) {
 
 function buildSeat(data, index) {
   const url = data.videoUrl ?? opt.video;
-  const clip = url ? new VideoClip(url) : new FakeClip(data.name, (index * 110 + 200) % 360, data.aspect ?? 16 / 9);
-  const projection = addProjection(scene, clip.source, stageSurfaces ?? [seatPanel(data)], {
-    pos: data.pos, yaw: data.yaw, pitch: data.pitch, roll: data.roll, fov: seatVerticalFov(data),
+  const clip = url ? new VideoClip(url, undefined, { loop: loopClips }) : new FakeClip(data.name, (index * 110 + 200) % 360, data.aspect ?? 16 / 9);
+  const panelData = { ...data, pitch: data.pitch + (data.panelPitchOffset ?? 0) };
+  const projection = addProjection(scene, clip.source, stageSurfaces ?? [seatPanel(panelData)], {
+    pos: data.pos, yaw: data.yaw, pitch: panelData.pitch, roll: data.roll, fov: seatVerticalFov(data),
     near: Math.min(0.1, opt.panelDist / 10),
     enabled: false, order: index + 1, debug: opt.debug && index === 0, // one frustum helper is enough
   });
@@ -363,7 +389,16 @@ function handleTap() {
 }
 
 function setupUi() {
-  document.getElementById("btn-start").onclick = () => { startPlayback(); document.getElementById("btn-start").remove(); };
+  document.getElementById("btn-start").onclick = () => {
+    startPlayback(); document.getElementById("btn-start").remove();
+    const pause = document.getElementById('btn-pause');
+    if (pause) pause.hidden = false;
+  };
+  const pause = document.getElementById('btn-pause');
+  if (pause) pause.onclick = () => {
+    if (clock.playing) clock.pause(); else startPlayback();
+    pause.textContent = clock.playing ? 'Pause' : 'Resume';
+  };
   document.getElementById("btn-cardboard").onclick = startCardboard;
   document.getElementById("btn-exit").onclick = exitCardboard;
   // A tap (the Cardboard button) selects the marker you are looking at; otherwise it recenters.
@@ -404,7 +439,10 @@ renderer.setAnimationLoop(() => {
   seats.forEach((s, k) => {
     const active = k === current;
     const state = s.clip.sync(clipTime(master, s.data.offsetSeconds), clock.playing, active);
-    const show = active && state === "playing" && !s.clip.video?.seeking; // one projection at a time, so moving people never appear twice
+    // Preserve the last decoded frame during drift correction. Transitions
+    // reset shown, so a new seat still waits for its first decoded frame.
+    const ready = !s.clip.video || (!s.clip.video.seeking && s.clip.video.readyState >= 2);
+    const show = active && state === "playing" && (ready || s.shown);
     if (show !== s.shown) { s.shown = show; s.projection.update({ enabled: show }); }
     s.projection.update(dt);
   });
@@ -418,7 +456,13 @@ renderer.setAnimationLoop(() => {
     + `master ${master.toFixed(1)} s · clip ${ct.toFixed(1)} s${ct < 0 ? " (not started yet)" : ""}`
     + (cur.clip.error ? `\n${cur.clip.error}` : "")
     + (cur.data.offsetKnown ? "" : " · audio offset unknown")
+    + (placementNote ? `\n${placementNote}` : "")
     + (opt.debug ? `\ngaze ${gaze.target === null ? "-" : seats[gaze.target].data.name} ${gaze.t.toFixed(2)} s` : "");
+  if (polished && !opt.debug) {
+    const prompt = clock.playing ? 'Drag to look around · Choose a viewpoint below'
+      : document.getElementById('btn-start') ? 'Press Play to enter the concert' : 'Paused · Press Resume to continue';
+    statusEl.textContent = cur.clip.error ?? `${cur.data.name}\n${prompt}\n${cur.data.offsetKnown ? '' : 'Clips are not synchronized'}`;
+  }
 
   if (stereo && !renderer.xr.isPresenting) stereo.render(scene, camera);
   else renderer.render(scene, camera);

@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Athens video alignment</title>
+<style>
+body{margin:0;background:#111;color:white;font:14px system-ui}canvas{display:block}
+aside{position:fixed;left:12px;top:12px;z-index:2;background:#111e;padding:14px;max-width:310px;border-radius:8px}
+video{width:100%;max-height:180px}button{margin:4px;padding:8px}#status{white-space:pre-wrap}
+</style>
+<aside><b>Athens video alignment</b><p id="status">Loading...</p>
+<video id="source" controls muted playsinline preload="auto"></video>
+<p>Use the controls to match the stage, roof supports and screens. Pause on a clear frame. Compare with projection off.</p>
+<button id="seat">View from projector</button><button id="orbit">Orbit scene</button>
+<button id="save">Download alignment</button>
+<p>This tool saves manual alignment, not a measured camera pose. No generation or API calls.</p></aside>
+<script type="module" src="./marble-align.js?v=3"></script>
+</html>

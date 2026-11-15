@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:athens": "node scripts/prepare-athens.mjs && vite build --config vite.athens.config.js",
     "preview": "vite preview",
     "marble": "node --env-file-if-exists=.env scripts/marble.mjs",
     "upload-server": "node --env-file-if-exists=.env scripts/upload-server.mjs",

@@ -1,0 +1,99 @@
+{
+  "worldId": "2487efc0-accb-4f30-bb34-168cae8791f3",
+  "placement": "Manual visual approximation in Marble metric preview space; section identities are known, exact seat coordinates are not surveyed.",
+  "sectionChart": "https://www.pao.gr/wp-content/uploads/2024/07/19/SEASON-TICKETS-24-25_fnl.pdf#page=3",
+  "concertChart": "https://forum.rocking.gr/uploads/default/original/3X/7/3/73ca2808fbc7fb5e39ca247b19173f714a91bf05.jpeg",
+  "target": [
+    0,
+    1.5,
+    -12
+  ],
+  "seats": [
+    {
+      "name": "Valia",
+      "gate": "33B",
+      "row": 11,
+      "seat": 15,
+      "surfaceAnchor": {
+        "source": "transformed collider.glb",
+        "pos": [
+          0,
+          2.07560865475,
+          4.5
+        ],
+        "eyeHeight": 0.12,
+        "units": "preview scene units; visual scale adjustment, not meters"
+      },
+      "pos": [
+        0,
+        2.19560865475,
+        4.5
+      ],
+      "file": "source-sdr.mp4",
+      "fov": 60,
+      "offsetSeconds": null
+    },
+    {
+      "name": "Can",
+      "gate": "26B",
+      "row": 10,
+      "seat": 14,
+      "surfaceAnchor": {
+        "source": "transformed collider.glb",
+        "pos": [
+          -8,
+          0.9257214292,
+          -1
+        ],
+        "eyeHeight": 0.12,
+        "units": "preview scene units; visual scale adjustment, not meters"
+      },
+      "pos": [
+        -8,
+        1.0457214292,
+        -1
+      ],
+      "file": "can-browser.mp4",
+      "fov": 60,
+      "offsetSeconds": null
+    },
+    {
+      "name": "Krhtikos",
+      "area": "Pitch / General Admission",
+      "gate": null,
+      "row": null,
+      "seat": null,
+      "bowlReference": {
+        "gate": "5B",
+        "row": 1,
+        "seat": 18
+      },
+      "locationEstimate": "User-estimated ~6 m from B-stage perimeter, ~45 degrees front-right. Bowl reference is not an assigned seat.",
+      "placementNote": "Moved into the visible central floor, away from the stand edge. Surface ray and visual check support the height; exact OAKA section/B-stage correspondence remains unverified.",
+      "surfaceAnchor": {
+        "source": "collider.glb, metric scale/ground offset/X flip applied",
+        "pos": [
+          1.5,
+          -1.2854678753,
+          -6
+        ],
+        "eyeHeight": 0.12,
+        "units": "preview scene units; visual scale adjustment, not meters"
+      },
+      "pos": [
+        1.5,
+        -1.1654678753,
+        -6
+      ],
+      "target": [
+        0,
+        -0.25,
+        -12
+      ],
+      "file": "krhtikos-browser.mp4",
+      "panelPitchOffset": 4,
+      "fov": 68,
+      "offsetSeconds": null
+    }
+  ]
+}
