@@ -62,6 +62,10 @@ npm run dev                  # in a second terminal, then open https://localhost
 
 Pick a video, tick the box that says it spends credits and replaces `public/world/`, and press Build. The page shows the real state (uploading to this computer, sending to Marble, building, downloading, ready, or the error). Only one run can go at a time. Set `UPLOAD_PIN=1234` before starting the server if the network is shared, because anyone who can open the dev server page can otherwise start a paid run. The server runs `scripts/marble.mjs`, so the output is identical. Concert mode shows a "prepared example" card only; nothing uploaded is processed for concert mode.
 
+### Find more angles (Grok + X)
+
+A separate page, `https://localhost:5173/angles.html`, on the same upload server. Put `XAI_API_KEY=...` in `.env` and restart `npm run upload-server`. Pick a clip: the browser sends 3 frames and about 24 s of the clip's audio to xAI, Grok transcribes it and searches X for other fans' videos of the same moment. You get links only; nothing is downloaded. A search takes 1 to 2 minutes and one runs at a time. The last result that found posts is saved to `public/concert/angles-cache.json`.
+
 ## Concert mode (KAN-14)
 
 A separate page, `https://localhost:5173/concert.html`, reusing the party code (`main.js` is untouched). You stand at one seat (a filming spot), look around, and jump to another seat by looking at its marker for 1.5 s or tapping the Cardboard button while looking at it. Each seat projects its own clip onto the stage from its spot (`src/projection.js`); only the current seat's clip shows. All clips run from one master clock, `clipTime = masterTime - offsetSeconds` (`src/masterClock.js`), so the music keeps going when you jump.

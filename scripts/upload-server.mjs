@@ -134,6 +134,177 @@ async function receiveUpload(req, res, url) {
   send(res, 202, { ok: true });
 }
 
+// ---------------------------------------------------------------------------
+// "Find more angles": the page sends a few frames plus a short WAV cut from the clip.
+// Grok's speech model transcribes that audio (grok-4.7 itself only takes text and images),
+// then grok-4.7 searches X. Links only; nothing is downloaded or built from them.
+// ---------------------------------------------------------------------------
+const XAI_MODEL = process.env.XAI_MODEL || "grok-4.7";
+const STT_MODEL = process.env.XAI_STT_MODEL || "grok-voice-transcribe-2.0";
+const ANGLES_CACHE = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "public", "concert", "angles-cache.json"); // gitignored folder
+const MAX_JSON = 6 * 1024 * 1024;
+let angles = { state: "idle", message: "Nothing is running.", result: null, startedAt: null, finishedAt: null };
+const setAngles = (patch) => { angles = { ...angles, ...patch }; };
+const readCache = () => { try { return JSON.parse(fs.readFileSync(ANGLES_CACHE, "utf8")); } catch { return null; } };
+
+const clean = (v, n = 120) => String(v ?? "").replace(/[\r\n]+/g, " ").trim().slice(0, n);
+
+function anglesPrompt(transcript, hadAudio, name) {
+  const heard = !hadAudio
+    ? "(no audio could be read from the file)"
+    : transcript || "(the clip had audio, but no words came out of it)";
+  return `Someone filmed a live music moment and wants other fans' videos of the same moment, from other angles.
+The video file is named: ${name || "(no name)"}
+Frames from their video are attached.
+Transcript of a short stretch of the clip's own audio. It may be sung lyrics, a crowd, or an announcement, and it may be garbled. Treat unclear lines as possible lyrics:
+${heard}
+
+1. Work out the artist, song, venue and date from the file name, the frames and the transcript. If it does not look like a live show, say so.
+2. Search X at most twice for posts with a video of that same event, ideally the same song. Then stop searching and answer.
+3. Reply with ONLY this JSON, no other text:
+{"event":"<what you think this is>","confidence":"low|medium|high","posts":[{"url":"https://x.com/<handle>/status/<id>","handle":"@...","description":"<one line>"}]}
+Up to 8 posts. Only include posts you actually found. Never invent a URL.`;
+}
+
+function parseAngles(text) {
+  let out = null;
+  try { out = JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)); } catch {}
+  if (!out || !Array.isArray(out.posts)) { // Grok ignored the format: salvage the links
+    const urls = [...new Set(text.match(/https:\/\/(?:x|twitter)\.com\/\w+\/status\/\d+/g) || [])];
+    out = { event: "", confidence: "low", posts: urls.map((url) => ({ url, handle: "", description: "" })) };
+  }
+  out.posts = out.posts.filter((p) => /^https:\/\/(?:x|twitter)\.com\/\w+\/status\/\d+/.test(p?.url)).slice(0, 8)
+    .map((p) => ({ url: p.url, handle: clean(p.handle, 40), description: clean(p.description, 200) }));
+  out.event = clean(out.event, 200);
+  out.confidence = ["low", "medium", "high"].includes(out.confidence) ? out.confidence : "low";
+  return out;
+}
+
+function wavFromDataUrl(s) {
+  const m = typeof s === "string" && s.match(/^data:audio\/wav;base64,([A-Za-z0-9+/]+={0,2})$/);
+  if (!m) return null;
+  const buf = Buffer.from(m[1], "base64");
+  if (buf.length < 44 || buf.length > 1_500_000) return null;
+  if (buf.toString("ascii", 0, 4) !== "RIFF" || buf.toString("ascii", 8, 12) !== "WAVE") return null;
+  return buf;
+}
+
+async function transcribe(wav) {
+  const form = new FormData();
+  form.append("model", STT_MODEL);
+  form.append("vad_threshold", "0"); // a concert is music and crowd, so do not drop non-speech
+  form.append("file", new Blob([wav], { type: "audio/wav" }), "clip.wav"); // file must be the last field
+  const res = await fetch("https://api.x.ai/v1/stt", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${process.env.XAI_API_KEY}` },
+    body: form,
+    signal: AbortSignal.timeout(90_000),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(res.status === 401 ? "xAI rejected the key (401). Check XAI_API_KEY." : `Could not transcribe the clip (xAI ${res.status}): ${clean(data.error?.message ?? data.error ?? "", 160)}`);
+    err.status = res.status;
+    throw err;
+  }
+  return clean(data.text, 800);
+}
+
+function messageText(output) {
+  return (output ?? []).filter((o) => o.type === "message").flatMap((o) => o.content ?? []).map((c) => c.text ?? "").join("\n");
+}
+
+// grok-4.7 reasons at "high" by default, and a quiet non-streaming call gets dropped before it answers.
+// Low effort plus a stream keeps the search inside a couple of minutes.
+async function askGrok(content) {
+  const res = await fetch("https://api.x.ai/v1/responses", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.XAI_API_KEY}` },
+    body: JSON.stringify({
+      model: XAI_MODEL,
+      store: false,
+      stream: true,
+      reasoning: { effort: "low" },
+      tools: [{ type: "x_search" }],
+      input: [{ role: "user", content }],
+    }),
+    signal: AbortSignal.timeout(240_000),
+  });
+  if (!res.ok || !res.body) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(res.status === 401 ? "xAI rejected the key (401). Check XAI_API_KEY." : `xAI error ${res.status}: ${clean(data.error?.message ?? data.error ?? "", 200)}`);
+  }
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "", deltas = "", final = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let nl;
+    while ((nl = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (!line.startsWith("data:")) continue;
+      const payload = line.slice(5).trim();
+      if (!payload || payload === "[DONE]") continue;
+      let ev;
+      try { ev = JSON.parse(payload); } catch { continue; }
+      if (ev.type === "response.output_text.delta") deltas += ev.delta || "";
+      else if (ev.type === "response.completed" || ev.type === "response.incomplete") final = messageText(ev.response?.output) || deltas;
+      else if (ev.type === "error" || ev.type === "response.failed") throw new Error(clean(ev.error?.message ?? ev.response?.error?.message ?? "xAI stream failed", 200));
+      else if (/tool_call|x_search|search/i.test(`${ev.type} ${ev.item?.name ?? ev.name ?? ""}`)) setAngles({ message: "Grok is searching X." });
+    }
+  }
+  const text = final || deltas;
+  if (!text) throw new Error("xAI returned an empty answer.");
+  return text;
+}
+
+async function runAngles(frames, audio, name) {
+  const started = Date.now();
+  try {
+    let transcript = "";
+    let audioNote = "";
+    if (audio) {
+      setAngles({ message: "Listening to the clip." });
+      try { transcript = await transcribe(audio); }
+      catch (e) {
+        if (e.status === 401) throw e; // the search uses the same key, so stop here
+        audioNote = " The audio could not be transcribed, so this is from the frames.";
+      }
+      if (!audioNote && !transcript) audioNote = " Nothing intelligible came out of the audio, so this is from the frames.";
+    } else audioNote = " This clip had no readable audio, so this is from the frames.";
+    setAngles({ message: "Grok is searching X. This takes about a minute or two." });
+    const content = [{ type: "input_text", text: anglesPrompt(transcript, Boolean(audio), name) }, ...frames.map((image_url) => ({ type: "input_image", image_url }))];
+    const text = await askGrok(content);
+    const result = { ...parseAngles(text), transcript, searchedAt: Date.now() };
+    if (result.posts.length) fsp.writeFile(ANGLES_CACHE, JSON.stringify(result, null, 2)).catch(() => {}); // backup for the demo
+    console.log(`angles: done in ${Math.round((Date.now() - started) / 1000)}s, ${result.posts.length} posts`);
+    setAngles({ state: "done", message: (result.posts.length ? `Found ${result.posts.length} posts.` : "Grok found no matching posts.") + audioNote, result, finishedAt: Date.now() });
+  } catch (e) {
+    const message = e.name === "TimeoutError" ? "Grok did not finish in time. Press Find more angles to try again." : e.message === "fetch failed" ? "Could not reach xAI. Check the internet connection." : e.message;
+    console.log(`angles: failed after ${Math.round((Date.now() - started) / 1000)}s: ${clean(message, 200)}`);
+    setAngles({ state: "failed", message: clean(message, 300), finishedAt: Date.now() });
+  }
+}
+
+async function receiveAngles(req, res) {
+  if (!process.env.XAI_API_KEY) return send(res, 503, { error: "XAI_API_KEY is not set on the upload server. Add it to .env and restart." });
+  if (!pinOk(req.headers["x-pin"])) return send(res, 401, { error: "Wrong or missing PIN." });
+  if (angles.state === "searching") return send(res, 409, { error: "A search is already running." });
+  let raw = "";
+  for await (const chunk of req) { raw += chunk; if (raw.length > MAX_JSON) return send(res, 413, { error: "Request too large." }); }
+  let body;
+  try { body = JSON.parse(raw); } catch { return send(res, 400, { error: "Bad JSON." }); }
+  const frames = (Array.isArray(body.frames) ? body.frames : []).filter((f) => /^data:image\/jpeg;base64,[\w+/=]+$/.test(f)).slice(0, 4);
+  const audio = wavFromDataUrl(body.audio);
+  const name = clean(body.name, 80);
+  if (!frames.length) return send(res, 400, { error: "Choose a video first." });
+  setAngles({ state: "searching", message: audio ? "Listening to the clip." : "Grok is searching X. This takes about a minute or two.", result: null, startedAt: Date.now(), finishedAt: null });
+  runAngles(frames, audio, name);
+  send(res, 202, { ok: true });
+}
+
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, "http://localhost");
   if (req.method === "GET" && url.pathname === "/api/party/status") {
@@ -150,11 +321,21 @@ const server = http.createServer((req, res) => {
       if (!res.headersSent) send(res, 500, { error: job.message });
     });
   }
+  if (req.method === "GET" && url.pathname === "/api/angles/status") {
+    return send(res, 200, { ...angles, keyConfigured: Boolean(process.env.XAI_API_KEY), pinRequired: Boolean(PIN), cached: readCache() });
+  }
+  if (req.method === "POST" && url.pathname === "/api/angles") {
+    return receiveAngles(req, res).catch((e) => {
+      setAngles({ state: "failed", message: `Server error: ${e.message}`, finishedAt: Date.now() });
+      if (!res.headersSent) send(res, 500, { error: angles.message });
+    });
+  }
   send(res, 404, { error: "Not found" });
 });
 
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`Upload server on http://127.0.0.1:${PORT} (Vite proxies /api to it).`);
   if (!process.env.WLT_API_KEY) console.warn("WLT_API_KEY is not set. The page will load but cannot start a run.");
+  if (!process.env.XAI_API_KEY) console.warn("XAI_API_KEY is not set. \"Find more angles\" cannot search.");
   if (!PIN) console.warn("No UPLOAD_PIN set: anyone who can open the dev server page can start a paid run.");
 });

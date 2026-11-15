@@ -15,6 +15,6 @@ export default defineConfig({
   },
   preview: { host: true, port: 4173 },
   build: {
-    rollupOptions: { input: { main: "index.html", upload: "upload.html", concert: "concert.html" } },
+    rollupOptions: { input: { main: "index.html", upload: "upload.html", concert: "concert.html", angles: "angles.html" } },
   },
 });

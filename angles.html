@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Concert Replay: find more angles</title>
+    <style>
+      :root { color-scheme: dark; }
+      body { margin: 0; background: #0d0d10; color: #eee; font: 16px/1.45 -apple-system, system-ui, sans-serif; }
+      main { max-width: 560px; margin: 0 auto; padding: 20px 16px 48px; }
+      h1 { font-size: 22px; margin: 0 0 4px; }
+      p { margin: 6px 0; }
+      .muted { color: #9a9aa5; font-size: 14px; }
+      .card { background: #17171c; border: 1px solid #2a2a33; border-radius: 12px; padding: 16px; margin-top: 16px; }
+      label { display: block; margin: 12px 0 4px; font-size: 14px; color: #bbb; }
+      input[type="password"], input[type="file"] { width: 100%; box-sizing: border-box; padding: 10px; border-radius: 8px; border: 1px solid #3a3a45; background: #0d0d10; color: #eee; font-size: 16px; }
+      button { margin-top: 14px; width: 100%; padding: 12px; border-radius: 8px; border: 0; background: #4f7cff; color: #fff; font-size: 16px; font-weight: 600; }
+      button:disabled { background: #34343f; color: #777; }
+      .banner { margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: #3a2a10; border: 1px solid #6b4d1a; font-size: 14px; }
+      .err { color: #ff9b9b; }
+      .results { list-style: none; padding: 0; margin: 8px 0 0; }
+      .results li { padding: 8px 0; border-top: 1px solid #2a2a33; font-size: 14px; }
+      .results a { color: #7aa2ff; word-break: break-all; }
+      .tag { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 99px; background: #2a2a33; color: #ccc; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Find more angles <span class="tag">Grok + X</span></h1>
+      <p class="muted">Pick a clip. Grok listens to its audio, looks at a few frames, and searches X for other fans' videos of the same moment. You get links only. A search takes 1 to 2 minutes.</p>
+
+      <section class="card" id="angles">
+        <div id="angles-banner" class="banner" hidden></div>
+        <label for="angles-file">Video</label>
+        <input id="angles-file" type="file" accept="video/mp4,video/quicktime,video/webm,.mp4,.mov,.webm" />
+        <div id="angles-pin-row" hidden>
+          <label for="angles-pin">PIN</label>
+          <input id="angles-pin" type="password" autocomplete="off" />
+        </div>
+        <button id="angles-go" disabled>Find more angles</button>
+        <p id="angles-msg" class="muted"></p>
+        <p id="angles-event"></p>
+        <p id="angles-heard" class="muted"></p>
+        <ul id="angles-list" class="results"></ul>
+        <button id="angles-cache" hidden>Show the last saved result</button>
+      </section>
+    </main>
+    <script type="module" src="/src/angles.js"></script>
+  </body>
+</html>
