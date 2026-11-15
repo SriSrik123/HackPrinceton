@@ -10,3 +10,8 @@ public/concert-test/*
 public/concert/*
 !public/concert/.gitkeep
 frames/
+.venv/
+archive/
+.depth/
+public/uploads/
+.models/

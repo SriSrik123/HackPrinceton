@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Rewind Cardboard Player</title>
+<style>
+  :root { --bg: #000; --fg: #e8ecf3; --muted: #9aa6ba; --accent: #5cc8ff; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); overflow: hidden;
+    font: 16px/1.4 -apple-system, system-ui, sans-serif; touch-action: none; }
+  canvas { display: block; }
+  #ui { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; padding: 16px; text-align: center; background: rgba(0,0,0,.85); }
+  #ui p { margin: 0; color: var(--muted); max-width: 34ch; }
+  button { font: 600 17px/1 inherit; padding: 14px 22px; border-radius: 999px; border: 1px solid var(--accent);
+    background: transparent; color: var(--fg); min-width: 220px; }
+  button.primary { background: var(--accent); color: #001018; }
+  #mid { position: fixed; top: 0; bottom: 0; left: 50%; width: 1px; background: #333; display: none; }
+</style>
+</head>
+<body>
+<div id="ui">
+  <h2 style="margin:0">Rewind</h2>
+  <p>Headphones on. Hold the phone in landscape, tap a button, then slide it into the Cardboard and look straight ahead.</p>
+  <button class="primary" id="cardboard">Cardboard (gyro)</button>
+  <button id="magic">Phone only (gyro, no split)</button>
+  <button id="desktop">Desktop (drag to look)</button>
+  <p style="font-size:13px">Tap the screen any time to recenter. Video: <span id="srcname"></span></p>
+</div>
+<div id="mid"></div>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+               "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+</script>
+<script type="module">
+import * as THREE from "three";
+import { StereoEffect } from "three/addons/effects/StereoEffect.js";
+
+const src = new URLSearchParams(location.search).get("src") || "../out/rewind_promo_360_3840.mp4";
+document.getElementById("srcname").textContent = src;
+
+const video = document.createElement("video");
+Object.assign(video, { src, crossOrigin: "anonymous", playsInline: true, loop: false, preload: "auto" });
+video.setAttribute("webkit-playsinline", "");
+
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(80, innerWidth / innerHeight, 0.1, 100);
+const rig = new THREE.Group();
+rig.add(camera);
+scene.add(rig);
+const stereo = new StereoEffect(renderer);
+stereo.setEyeSeparation(0); // mono 360: both eyes see the same image
+stereo.setSize(innerWidth, innerHeight);
+
+// Equirect lookup done per pixel from the view direction, so orientation is exact:
+// image centre = straight ahead (-z), image right = turning right (+x).
+const tex = new THREE.VideoTexture(video);
+tex.colorSpace = THREE.SRGBColorSpace;
+tex.minFilter = THREE.LinearFilter;
+tex.generateMipmaps = false;
+const mat = new THREE.ShaderMaterial({
+  side: THREE.BackSide, depthWrite: false,
+  uniforms: { map: { value: tex } },
+  vertexShader: `varying vec3 vDir; void main(){ vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+  fragmentShader: `uniform sampler2D map; varying vec3 vDir;
+    void main(){ vec3 d = normalize(vDir);
+      float lon = atan(d.x, -d.z); float lat = asin(clamp(d.y,-1.0,1.0));
+      vec2 uv = vec2(lon / 6.2831853 + 0.5, 0.5 + lat / 3.1415927);
+      gl_FragColor = texture2D(map, uv);
+      #include <colorspace_fragment>
+    }`,
+});
+scene.add(new THREE.Mesh(new THREE.SphereGeometry(50, 96, 64), mat));
+
+// ---- look controls (same math as party-mode/src/lookControls.js)
+const zee = new THREE.Vector3(0, 0, 1), euler = new THREE.Euler(), q0 = new THREE.Quaternion();
+const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
+const fwd = new THREE.Vector3();
+let orient = null, gyro = false, recenter = false, yaw = 0, pitch = 0;
+let mode = "desktop";
+addEventListener("deviceorientation", (e) => { if (e.alpha != null) orient = e; });
+let drag = false, lx = 0, ly = 0, moved = 0;
+addEventListener("pointerdown", (e) => { drag = true; lx = e.clientX; ly = e.clientY; moved = 0; });
+addEventListener("pointermove", (e) => {
+  if (!drag || gyro) return;
+  yaw -= (e.clientX - lx) * 0.004; pitch -= (e.clientY - ly) * 0.004;
+  pitch = Math.max(-1.5, Math.min(1.5, pitch));
+  moved += Math.abs(e.clientX - lx) + Math.abs(e.clientY - ly); lx = e.clientX; ly = e.clientY;
+});
+addEventListener("pointerup", () => {
+  drag = false;
+  if (document.getElementById("ui").style.display !== "none") return;
+  if (moved < 6) { recenter = true; if (video.paused) video.play(); }
+});
+
+async function start(m) {
+  mode = m;
+  if (m !== "desktop") {
+    const DOE = window.DeviceOrientationEvent;
+    if (DOE && typeof DOE.requestPermission === "function") {
+      if ((await DOE.requestPermission()) !== "granted") { alert("Motion access denied. Reload and tap Allow."); return; }
+    }
+    gyro = true; recenter = true;
+    try { await document.documentElement.requestFullscreen?.(); await screen.orientation?.lock?.("landscape"); } catch {}
+  }
+  document.getElementById("ui").style.display = "none";
+  document.getElementById("mid").style.display = m === "cardboard" ? "block" : "none";
+  video.currentTime = 0;
+  await video.play();
+}
+document.getElementById("cardboard").onclick = () => start("cardboard");
+document.getElementById("magic").onclick = () => start("magic");
+document.getElementById("desktop").onclick = () => start("desktop");
+video.addEventListener("ended", () => { document.getElementById("ui").style.display = "flex"; });
+
+addEventListener("resize", () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight); stereo.setSize(innerWidth, innerHeight);
+});
+
+renderer.setAnimationLoop(() => {
+  if (gyro && orient) {
+    const { alpha, beta, gamma } = orient;
+    const o = THREE.MathUtils.degToRad(screen.orientation?.angle ?? window.orientation ?? 0);
+    euler.set(THREE.MathUtils.degToRad(beta), THREE.MathUtils.degToRad(alpha), -THREE.MathUtils.degToRad(gamma), "YXZ");
+    camera.quaternion.setFromEuler(euler).multiply(q1).multiply(q0.setFromAxisAngle(zee, -o));
+    if (recenter) {
+      fwd.set(0, 0, -1).applyQuaternion(camera.quaternion);
+      rig.rotation.y = -Math.atan2(-fwd.x, -fwd.z);
+      recenter = false;
+    }
+  } else if (!gyro) {
+    camera.rotation.set(pitch, yaw, 0, "YXZ");
+  }
+  if (mode === "cardboard") stereo.render(scene, camera); else renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>

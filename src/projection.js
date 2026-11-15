@@ -41,8 +41,12 @@ export const DEFAULTS = {
   far: 30,            //   the projection itself has no distance limit
 
   // Look.
+  extend: 0,          // fill past the frame: the video's edge colours are washed outward, blurred, over the
+                      //   walls and table, fading out over this distance (in frame sizes; 0 = off, 1 = one frame)
   fade: 0.12,         // width of the soft edge, as a fraction of the frame (0 = hard edge)
   opacity: 1,         // 0 to 1
+  overlay: 1,         // 0 to 1, multiplies opacity for the drawn layer only. Paint mode (splatPaint.js) lowers it
+                      //   so the painted splats carry the colour and this layer only adds sharpness
   brightness: 1,      // multiplier
   saturation: 1,      // 0 = gray, 1 = as filmed
   tint: "#ffffff",    // multiplied into the video color
@@ -57,6 +61,8 @@ export const DEFAULTS = {
   roomBehind: 0.1,       // meters of floor behind the projector (the room is open at that end)
 };
 
+const EXTEND_STRENGTH = 0.9;          // how opaque the washed-out fill is right at the frame's border
+const EXTEND_BLUR = 5;                // mip bias for the fill: higher = blurrier (the video texture has mipmaps, see setSource)
 const URL_PREFIX = "proj";            // ?projFov=... maps to params.fov
 const FOV_MIN = 1, FOV_MAX = 179;     // degrees; outside this the projection matrix breaks down
 const FALLBACK_ASPECT = 16 / 9;       // used until the source reports its size
@@ -96,7 +102,7 @@ void main() {
 const FRAGMENT_SHADER = /* glsl */ `
 uniform sampler2D map;
 uniform vec3 tint;
-uniform float fade, opacity, brightness, saturation, shading, ambient;
+uniform float fade, opacity, brightness, saturation, shading, ambient, extend;
 varying vec4 vClip;
 varying vec3 vToProj;
 varying vec3 vNormal;
@@ -104,14 +110,23 @@ varying vec3 vNormal;
 const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722); // Rec. 709 gray weights
 
 void main() {
-  if (vClip.w <= 0.0) discard;                    // behind the projector
-  vec2 uv = vClip.xy / vClip.w * 0.5 + 0.5;       // position in the video frame, 0 to 1
+  vec2 uv = vClip.xy / max(vClip.w, 1e-4) * 0.5 + 0.5; // position in the video frame, 0 to 1
   vec2 toBorder = min(uv, 1.0 - uv);
-  float edge = min(toBorder.x, toBorder.y);       // distance to the nearest frame border
-  if (edge <= 0.0) discard;                       // outside the frame: the room shows through
-  float alpha = opacity * (fade > 0.0 ? smoothstep(0.0, fade, edge) : 1.0);
+  float edge = min(toBorder.x, toBorder.y);       // distance to the nearest frame border (negative outside)
+  float aFrame = edge > 0.0 ? (fade > 0.0 ? smoothstep(0.0, fade, edge) : 1.0) : 0.0;
 
-  vec3 color = texture2D(map, uv).rgb * tint * brightness;
+  // The fill past the frame: a blurred copy of the nearest video pixels, fading with distance.
+  vec2 inside = clamp(uv, 0.0, 1.0);
+  float outside = length(uv - inside);
+  float aExt = extend > 0.0 ? (1.0 - smoothstep(0.0, extend, outside)) * ${EXTEND_STRENGTH.toFixed(2)} : 0.0;
+  float aAll = aFrame + aExt * (1.0 - aFrame);    // the frame drawn over the fill
+  vec3 frameColor = texture2D(map, inside).rgb;
+  vec3 fillColor = texture2D(map, inside, ${EXTEND_BLUR.toFixed(1)}).rgb;
+  if (vClip.w <= 0.0 || aAll <= 0.0) discard;     // behind the projector, or nothing to draw: the room shows through
+  float alpha = opacity * aAll;
+
+  vec3 color = (frameColor * aFrame + fillColor * aExt * (1.0 - aFrame)) / aAll;
+  color = color * tint * brightness;
   color = mix(vec3(dot(color, LUMA)), color, saturation);
 
   // Lambert term against the projector, both sides lit. Darkens surfaces that face away.
@@ -131,7 +146,7 @@ export function addProjection(scene, video, surfaces, opts = {}) {
     projPos: { value: new THREE.Vector3() },
     tint: { value: new THREE.Color() },
     fade: { value: 0 }, opacity: { value: 1 }, brightness: { value: 1 },
-    saturation: { value: 1 }, shading: { value: 0 }, ambient: { value: 0 },
+    saturation: { value: 1 }, shading: { value: 0 }, ambient: { value: 0 }, extend: { value: 0 },
   };
   const material = new THREE.ShaderMaterial({
     uniforms,
@@ -196,27 +211,53 @@ export function addProjection(scene, video, surfaces, opts = {}) {
   const viewerPos = new THREE.Vector3(); // scratch, so refresh() does not allocate
   let offAxisWarned = false;
 
+  // A panning video (src/rotationTrack.js). aim() turns the projector from its aligned pose
+  // (params line up the FIRST frame) by the camera's rotation since then, with a FOV scale.
+  const trackQuat = new THREE.Quaternion(); // identity = no tracking
+  let trackZoom = 1;                        // tan(fov / 2) relative to params.fov
+  let customView = false;                   // true while aimMatrix() supplies projView
+  function pose() {
+    const half = Math.tan(THREE.MathUtils.degToRad(THREE.MathUtils.clamp(params.fov, FOV_MIN, FOV_MAX)) / 2) * trackZoom;
+    cam.fov = THREE.MathUtils.clamp(THREE.MathUtils.radToDeg(2 * Math.atan(half)), FOV_MIN, FOV_MAX);
+    cam.rotation.set(
+      THREE.MathUtils.degToRad(params.pitch), THREE.MathUtils.degToRad(params.yaw), THREE.MathUtils.degToRad(params.roll),
+      "YXZ", // yaw, then pitch, then roll: how a hand-held phone is aimed
+    );
+    cam.quaternion.multiply(trackQuat);
+    cam.updateProjectionMatrix();
+    cam.updateMatrixWorld(true);
+    if (!customView) uniforms.projView.value.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+  }
+
+  // aimMatrix() takes a world-to-clip matrix as is: it may stretch the picture, which a camera
+  // pose cannot. null goes back to the pose. Both are per-frame calls with no allocations.
+  function aimMatrix(matrix) {
+    customView = !!matrix;
+    if (matrix) uniforms.projView.value.copy(matrix); else pose();
+  }
+  function aim(quat, zoom = 1) {
+    trackQuat.copy(quat);
+    trackZoom = zoom;
+    customView = false;
+    pose();
+    helper?.update();
+  }
+
   // Recomputes everything derived from params. Runs on a param change or when the source's size
   // becomes known, not every frame. No allocations.
   function refresh() {
     const p = params;
     const near = p.near > 0 ? p.near : DEFAULTS.near;
-    cam.fov = THREE.MathUtils.clamp(p.fov, FOV_MIN, FOV_MAX);
     cam.aspect = sourceWidth > 0 && sourceHeight > 0 ? sourceWidth / sourceHeight : FALLBACK_ASPECT;
     cam.near = near;
     cam.far = p.far > near ? p.far : near + DEFAULTS.far;
     cam.position.fromArray(p.pos);
-    cam.rotation.set(
-      THREE.MathUtils.degToRad(p.pitch), THREE.MathUtils.degToRad(p.yaw), THREE.MathUtils.degToRad(p.roll),
-      "YXZ", // yaw, then pitch, then roll: how a hand-held phone is aimed
-    );
-    cam.updateProjectionMatrix();
-    cam.updateMatrixWorld(true);
-    uniforms.projView.value.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+    pose();
     uniforms.projPos.value.copy(cam.position);
     uniforms.tint.value.set(p.tint);
     uniforms.fade.value = p.fade;
-    uniforms.opacity.value = p.opacity;
+    uniforms.extend.value = p.extend;
+    uniforms.opacity.value = p.opacity * p.overlay;
     uniforms.brightness.value = p.brightness;
     uniforms.saturation.value = p.saturation;
     uniforms.shading.value = p.shading;
@@ -283,6 +324,8 @@ export function addProjection(scene, video, surfaces, opts = {}) {
       texture = source;
     } else if (source) {
       texture = ownedTexture = new THREE.VideoTexture(source);
+      texture.generateMipmaps = true; // the blurred fill past the frame samples a low mip level
+      texture.minFilter = THREE.LinearMipmapLinearFilter;
     } else {
       console.warn("[projection] no video given (world.json has no \"video\"?). Showing a test pattern so alignment can still be checked.");
       texture = ownedTexture = makeTestPattern();
@@ -326,7 +369,7 @@ export function addProjection(scene, video, surfaces, opts = {}) {
     if (globalThis.projection === api) delete globalThis.projection;
   }
 
-  const api = { update, dispose, setSource, cam, params, material, helper, texture: null };
+  const api = { update, aim, aimMatrix, dispose, setSource, cam, params, material, helper, texture: null };
   setSource(video);
 
   if (debug) globalThis.projection = api; // console handle: projection.update({ fov: 45 }), projection.dispose()

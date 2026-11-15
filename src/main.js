@@ -2,14 +2,20 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { VRButton } from "three/addons/webxr/VRButton.js";
 import { StereoEffect } from "three/addons/effects/StereoEffect.js";
-import { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
+import { SparkRenderer, SplatMesh, SplatEdit, SplatEditSdf, SplatEditSdfType, SplatEditRgbaBlendMode } from "@sparkjsdev/spark";
 
 import { loadConfig } from "./config.js";
 import { LookControls } from "./lookControls.js";
 import { addProjection } from "./projection.js";
+import { loadRotationTrack } from "./rotationTrack.js";
+import { addSplatPaint } from "./splatPaint.js";
+import { addDepthMesh } from "./depthMesh.js";
+import { addTrackedPeople, loadTracks } from "./trackedPeople.js";
+import { addFramingPanel, savedFraming } from "./framingPanel.js";
+import { addCutout } from "./cutout.js";
 
 const cfg = loadConfig();
-const WORLD_DIR = "./world/";
+const WORLD_DIR = `./${cfg.world}/`;
 const statusEl = document.getElementById("status");
 const setStatus = (msg) => { statusEl.textContent = msg; console.log("[party]", msg); };
 
@@ -50,9 +56,47 @@ world.add(metric);
 scene.add(world);
 
 const look = new LookControls(camera, rig, renderer.domElement);
+
+// WASD walk (desktop): W/S forward/back, A/D left/right, Q/E down/up, Shift = faster. Moves the
+// rig along where the camera looks, flattened to the floor. P prints the spot as a ?cam= value.
+const keys = new Set();
+const typing = (e) => /^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName);
+window.addEventListener("keydown", (e) => {
+  if (typing(e) || e.metaKey || e.ctrlKey) return;
+  keys.add(e.code);
+  if (e.code === "KeyP") console.log(`[party] ?cam=${rig.position.toArray().map((v) => v.toFixed(2)).join(",")}&yaw=${THREE.MathUtils.radToDeg(rig.rotation.y).toFixed(0)}`);
+});
+window.addEventListener("keyup", (e) => keys.delete(e.code));
+window.addEventListener("blur", () => keys.clear());
+const walkFwd = new THREE.Vector3(), walkRight = new THREE.Vector3(), walkMove = new THREE.Vector3();
+function walk(dt) {
+  if (!keys.size) return;
+  camera.getWorldDirection(walkFwd);
+  walkFwd.y = 0;
+  if (walkFwd.lengthSq() < 1e-6) return;
+  walkFwd.normalize();
+  walkRight.set(-walkFwd.z, 0, walkFwd.x);
+  walkMove.set(0, 0, 0);
+  if (keys.has("KeyW") || keys.has("ArrowUp")) walkMove.add(walkFwd);
+  if (keys.has("KeyS") || keys.has("ArrowDown")) walkMove.sub(walkFwd);
+  if (keys.has("KeyD") || keys.has("ArrowRight")) walkMove.add(walkRight);
+  if (keys.has("KeyA") || keys.has("ArrowLeft")) walkMove.sub(walkRight);
+  if (keys.has("KeyE")) walkMove.y += 1;
+  if (keys.has("KeyQ")) walkMove.y -= 1;
+  if (walkMove.lengthSq() === 0) return;
+  const speed = keys.has("ShiftLeft") || keys.has("ShiftRight") ? 3 : 1.2; // metres per second
+  rig.position.addScaledVector(walkMove.normalize(), speed * Math.min(dt, 0.1));
+}
 let stereo = null; // StereoEffect when in Cardboard fallback mode
 let projection = null;
+let depthMesh = null;                   // depth mesh (src/depthMesh.js), or null
+let paint = null;                       // splat painting (src/splatPaint.js), or null
+let people = null;                      // tracked people cards (src/trackedPeople.js), or null
 let video = null;
+let cutout = null;                      // cut-out person card (src/cutout.js), or null
+let track = null;                       // per-frame camera rotation of a panning video, or null
+const trackQuat = new THREE.Quaternion();
+const trackMatrix = new THREE.Matrix4();
 
 // ---------------------------------------------------------------------------
 // Loading
@@ -71,6 +115,26 @@ function applyMetric(meta) {
   metric.position.y = -(m.ground_plane_offset ?? 0);
 }
 
+// ?cut=x,y,z,w,h,d;... hides every splat inside each box (viewer meters, see config.js).
+function applyCuts(splat) {
+  const boxes = cfg.cut.split(";").map((b) => b.trim()).filter(Boolean).map((b) => b.split(",").map(Number));
+  if (!boxes.length) return;
+  const edit = new SplatEdit({ rgbaBlendMode: SplatEditRgbaBlendMode.MULTIPLY, sdfSmooth: 0, softEdge: 0 });
+  for (const [x, y, z, w, h, d] of boxes) {
+    const sdf = new SplatEditSdf({ type: SplatEditSdfType.BOX, opacity: 0 });
+    // Edits live in the splat's own frame, so convert the viewer-space box into it.
+    scene.updateMatrixWorld(true);
+    const c = new THREE.Vector3(x, y, z);
+    splat.worldToLocal(scene.localToWorld(c)); // viewer space == scene space
+    sdf.position.copy(c);
+    const k = 1 / (metric.scale.x || 1);
+    sdf.scale.set((w / 2) * k, (h / 2) * k, (d / 2) * k);
+    edit.addSdf(sdf);
+  }
+  splat.add(edit);
+  console.log(`[party] hiding ${boxes.length} box(es) of splat`);
+}
+
 async function loadSplat() {
   const url = WORLD_DIR + `splat-${cfg.splat}.spz`;
   setStatus(`Loading splat (${cfg.splat})...`);
@@ -78,6 +142,7 @@ async function loadSplat() {
   splat.name = "splat";
   metric.add(splat);
   await splat.initialized;
+  applyCuts(splat);
   return splat;
 }
 
@@ -191,7 +256,19 @@ const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
   const dt = clock.getDelta();
   if (!renderer.xr.isPresenting) look.update(); // WebXR drives the camera itself
+  if (!renderer.xr.isPresenting) walk(dt);
+  if (track && video && projection) {
+    if (cfg.anchor && track.sampleMatrix) {
+      projection.aimMatrix(track.sampleMatrix(video.currentTime, projection.cam.position, rig.rotation.y, trackMatrix));
+    } else {
+      projection.aim(trackQuat, track.sample(video.currentTime, trackQuat));
+    }
+  }
   projection?.update?.(dt);
+  paint?.update();
+  depthMesh?.update();
+  people?.update();
+  cutout?.update();
   if (stereo && !renderer.xr.isPresenting) stereo.render(scene, camera);
   else renderer.render(scene, camera);
 });
@@ -212,21 +289,104 @@ async function main() {
   }
   applyMetric(meta);
 
-  const [, surfaces, vid] = await Promise.all([
+  const [splat, surfaces, vid, rotation, tracks] = await Promise.all([
     loadSplat().catch((e) => { setStatus("Splat failed to load: " + e.message); throw e; }),
     loadCollider(),
     loadVideo(meta),
+    cfg.track ? loadRotationTrack(WORLD_DIR + "rotation.json") : null,
+    cfg.people ? loadTracks(WORLD_DIR + "tracks.json") : null,
   ]);
   video = vid;
   placeViewer();
 
   projection = addProjection(scene, video, surfaces, { camera, rig, config: cfg, world: meta });
 
+  // Cut-out person: world.json "cutout" {at: [x, z], height} plays meta.video (stacked alpha) on a
+  // card standing in the room instead of projecting it. ?cutout=x,z and ?cutoutH=1.7 move and size it.
+  if (meta.cutout && video) {
+    projection.update({ enabled: false });
+    const at = cfg.cutout ? cfg.cutout.split(",").map(Number) : meta.cutout.at;
+    cutout = addCutout(scene, video, { at, height: cfg.cutoutH || meta.cutout.height, viewer: rig });
+  }
+
+  // Start spot: world.json "start" [x, z] or ?start=x,z moves the viewer off the Marble origin
+  // (metres, +x = right, -z = ahead). Placed after the cutout so she stays put in the room.
+  const start = cfg.start ? cfg.start.split(",").map(Number) : meta.start;
+  if (Array.isArray(start) && start.every(Number.isFinite)) {
+    rig.position.add(new THREE.Vector3(start[0], 0, start[1]).applyAxisAngle(new THREE.Vector3(0, 1, 0), rig.rotation.y));
+  }
+
+  // A panning video: the projector follows the camera's tracked rotation (npm run track).
+  track = rotation;
+  if (track) {
+    console.log(`[party] rotation track loaded, ${track.duration.toFixed(1)} s, ${track.vfov} degree vertical FOV (${track.source})`);
+    // Aim the projector for the video's first frame, unless the URL tunes it by hand.
+    const url = new URLSearchParams(location.search);
+    const aimAt = {};
+    if (!url.has("projFov")) aimAt.fov = track.vfov;
+    // Marble's room is close to the video but not identical, so blend the frame's edge wider.
+    if (!url.has("projFade")) aimAt.fade = 0.25;
+    if (track.base) {
+      if (!url.has("projYaw")) aimAt.yaw = cfg.yaw + track.base.yaw;
+      if (!url.has("projPitch")) aimAt.pitch = track.base.pitch;
+      if (!url.has("projRoll")) aimAt.roll = track.base.roll;
+    }
+    projection.update(aimAt);
+  }
+
+  // Paint mode: the video colours the room's splats, so the overlay layer is switched off.
+  // (Not with the depth mesh: its cut-outs would show the smeared paint instead of the clean room.)
+  // Tracked people (npm run track-people): each person is a cut-out card in the room instead of the
+  // whole frame on the walls. Paint and the depth mesh would draw the people a second time, so they stay off.
+  const usePeople = !!(tracks && video);
+  const useDepth = !usePeople && !!(cfg.depth && meta.depth && video);
+  const wantPaint = !usePeople && !useDepth && (new URLSearchParams(location.search).has("paint") ? cfg.paint : (cfg.paint || meta.paint));
+  if (wantPaint && video) {
+    // The painted splats carry the colour; the drawn layer stays on at half strength for sharpness
+    // (the Framing panel's "Overlay layer" slider, ?projOverlay=0 for paint only).
+    paint = addSplatPaint(splat, projection);
+    console.log("[party] painting the video into the splats");
+  }
+
+  // Depth mesh: the video at the depths measured by scripts/depth-video.py (opt in with ?depth=1).
+  if (useDepth) {
+    try {
+      depthMesh = await addDepthMesh(scene, projection, video, { base: WORLD_DIR, meta: meta.depth, scale: cfg.depthScale });
+      console.log("[party] depth mesh on");
+    } catch (e) {
+      console.warn("[party] depth mesh failed, keeping the flat overlay", e);
+    }
+  }
+
+  if (usePeople) {
+    try {
+      people = await addTrackedPeople(scene, projection, video, { base: WORLD_DIR, tracks, depth: meta.depth, scale: cfg.depthScale });
+      console.log(`[party] ${tracks.tracks.length} tracked people in the room`);
+    } catch (e) {
+      console.warn("[party] tracked people failed, keeping the flat overlay", e);
+    }
+  }
+
+  // Framing: where the video sits in the room and how it looks. Lowest to highest priority:
+  // projection.js defaults, the rotation track, world.json "projection", what the Framing panel
+  // saved in this browser, then ?proj... in the URL.
+  if (video) {
+    const url = new URLSearchParams(location.search);
+    const fromUrl = (key) => url.has("proj" + key[0].toUpperCase() + key.slice(1));
+    const keep = (obj) => Object.fromEntries(Object.entries(obj ?? {}).filter(([key]) => !fromUrl(key)));
+    const paintDefaults = wantPaint ? keep({ overlay: 0.5 }) : {};
+    const initial = { ...projection.params, ...paintDefaults, ...keep(meta.projection) };
+    delete initial.pos; // the panel never moves the projector off the viewer's spot
+    projection.update({ ...paintDefaults, ...keep(meta.projection), ...keep(savedFraming(cfg.world)) });
+    if (people || cutout) projection.update({ enabled: false }); // the framing reset above must not bring the overlay back
+    addFramingPanel(projection, { world: cfg.world, initial, viewer: { camera, rig }, paint: !!wantPaint });
+  }
+
   setStatus(meta.caption ? `Loaded: ${meta.caption}` : "Loaded");
   setTimeout(() => setStatus(""), 4000);
 
   // handy in the browser console while debugging
-  Object.assign(window, { THREE, scene, camera, rig, world, metric, renderer, cfg, video });
+  Object.assign(window, { cutout, paint, depthMesh, people, THREE, scene, camera, rig, world, metric, renderer, cfg, video, projection, track, look });
 }
 
 main();

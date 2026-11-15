@@ -50,9 +50,22 @@ Video rules from the Marble docs: mp4, webm, mov or avi, max 100 MB. To shrink a
 ffmpeg -i party.mov -vf scale=-2:720 -c:v libx264 -crf 26 -c:a aac -b:a 128k party_720.mp4
 ```
 
-### Or from the upload page (KAN-15)
+### If the video pans: track the camera
 
-Same Marble run, started from a page instead of the terminal:
+Run this after every Marble run, and again whenever the video changes:
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install opencv-python-headless numpy   # once
+npm run track -- public/world/source.mp4
+```
+
+It writes `public/world/rotation.json`: where the camera was pointing in every frame (yaw, pitch, zoom), and where the first frame sits in Marble's room (fitted to `pano.png`, which the Marble script downloads). The viewer loads it by itself and turns the projector with the camera, so the video lands on the part of the room that was being filmed. `?track=0` turns that off for comparison. By default the video is also anchored: every frame is pinned back to where the first frame sits in the room, stretching the picture if needed, so the people at the table stay on Marble's copies of them. `?anchor=0` uses the camera's clean rotation instead. `.venv/bin/python scripts/track-rotation.py --selftest` checks the math on generated frames.
+
+It only handles a camera that turns in one place. Marble redraws the room from the video, people included, so the video will not line up exactly: expect it to be close in the opening view and to drift by 10 to 25 degrees elsewhere. A video that turns through most of the room (Marble asks for 180 to 360 degrees) gives a much closer room than one that only covers part of it.
+
+### Or from the upload page
+
+One box: an mp4, up to 4 pictures and a prompt, then Create.
 
 ```bash
 export WLT_API_KEY=your_key_here
@@ -60,7 +73,7 @@ npm run upload-server        # keeps the key on this computer, listens on 127.0.
 npm run dev                  # in a second terminal, then open https://localhost:5173/upload.html
 ```
 
-Pick a video, tick the box that says it spends credits and replaces `public/world/`, and press Build. The page shows the real state (uploading to this computer, sending to Marble, building, downloading, ready, or the error). Only one run can go at a time. Set `UPLOAD_PIN=1234` before starting the server if the network is shared, because anyone who can open the dev server page can otherwise start a paid run. The server runs `scripts/marble.mjs`, so the output is identical. Concert mode shows a "prepared example" card only; nothing uploaded is processed for concert mode.
+The server turns the mp4 into a 480p copy, asks Marble for a room from the prompt and pictures (the video itself is never sent, so its people and cake are not copied in), then adds depth with `scripts/depth-video.py` if `.depth/` is set up. Each run spends about $1.28 of Marble credits and takes around 6 minutes. The result goes to a new folder `public/uploads/<id>/`, never over `public/world/`, and the page ends with an Open button for `/?world=uploads/<id>`. Add `&depth=1` for the depth version. Set `UPLOAD_PIN=1234` on the server to require a PIN for uploads and angles searches; without it, anyone who can reach the dev server page can start a run.
 
 ### Find more angles (Grok + X)
 

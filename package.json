@@ -9,6 +9,8 @@
     "preview": "vite preview",
     "marble": "node --env-file-if-exists=.env scripts/marble.mjs",
     "upload-server": "node --env-file-if-exists=.env scripts/upload-server.mjs",
+    "track": ".venv/bin/python scripts/track-rotation.py",
+    "track-people": ".venv/bin/python scripts/track-people.py",
     "export-cameras": "node scripts/export-cameras.mjs",
     "extract-frames": "node scripts/extract-frames.mjs"
   },
